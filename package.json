@@ -3,21 +3,32 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
+    "dev:webpack": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node -e \"const fs=require('fs');const src='node_modules/opencascade.js/dist/opencascade.wasm.wasm';const dir='public/wasm';if(fs.existsSync(src)){fs.mkdirSync(dir,{recursive:true});fs.copyFileSync(src,dir+'/opencascade.wasm.wasm');console.log('✓ WASM binary copied to public/wasm/');}else{console.warn('⚠ opencascade.js not installed yet, skipping WASM copy.');}\""
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.0",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.104.1",
+    "comlink": "^4.4.2",
+    "gsap": "^3.15.0",
     "next": "16.2.4",
+    "opencascade.js": "^1.1.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "three": "^0.184.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.184.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
