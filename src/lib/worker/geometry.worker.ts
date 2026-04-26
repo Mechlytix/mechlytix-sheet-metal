@@ -574,6 +574,100 @@ function computeBoundingBox(
   return result;
 }
 
+// ── Pricing Geometry Helpers ────────────────────────────
+
+/** Sum all edge lengths on a single face (outer + inner wires) */
+function computeFaceEdgeLengths(face: any): { outerPerimeter: number; innerCount: number } {
+  let outerPerimeter = 0;
+  let innerCount = 0;
+
+  // Iterate wires on the face
+  const faceIter = new oc.TopoDS_Iterator_2(face, true, true);
+  let wireIndex = 0;
+  while (faceIter.More()) {
+    const wireShape = faceIter.Value();
+    const wire = oc.TopoDS.Wire_1(wireShape);
+
+    // Sum edge lengths in this wire
+    let wireLen = 0;
+    const edgeExp = new oc.TopExp_Explorer_2(
+      wire,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+    );
+    while (edgeExp.More()) {
+      const edge = oc.TopoDS.Edge_1(edgeExp.Current());
+      const gProps = new oc.GProp_GProps_1();
+      oc.BRepGProp.LinearProperties(edge, gProps, false, false);
+      wireLen += gProps.Mass();
+      gProps.delete();
+      edgeExp.Next();
+    }
+    edgeExp.delete();
+
+    if (wireIndex === 0) {
+      outerPerimeter = wireLen;
+    } else {
+      innerCount++;
+    }
+    wireIndex++;
+    faceIter.Next();
+  }
+  faceIter.delete();
+
+  return { outerPerimeter, innerCount };
+}
+
+/** Compute face bounding box dimensions in local XZ plane */
+function computeFaceDimensions(face: any): { width: number; height: number } {
+  const location = new oc.TopLoc_Location_1();
+  const triangulation = oc.BRep_Tool.Triangulation(face, location);
+  if (triangulation.IsNull()) {
+    location.delete();
+    return { width: 0, height: 0 };
+  }
+  const tri = triangulation.get();
+  const nbNodes = tri.NbNodes();
+  const trsf = location.Transformation();
+
+  let minX = Infinity, maxX = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
+  for (let i = 1; i <= nbNodes; i++) {
+    const node = tri.Node(i).Transformed(trsf);
+    if (node.X() < minX) minX = node.X();
+    if (node.X() > maxX) maxX = node.X();
+    if (node.Z() < minZ) minZ = node.Z();
+    if (node.Z() > maxZ) maxZ = node.Z();
+    node.delete();
+  }
+  location.delete();
+  trsf.delete();
+  return {
+    width:  isFinite(maxX - minX) ? maxX - minX : 0,
+    height: isFinite(maxZ - minZ) ? maxZ - minZ : 0,
+  };
+}
+
+/** Traverse unfold tree to compute flat pattern bounding dimensions */
+function computeFlatPatternDims(
+  node: import("@/lib/types/unfold").FlangeNode,
+  thickness: number
+): { width: number; height: number } {
+  // Walk the tree linearly — sum widths + bend allowances, take max height
+  let totalWidth = node.geometry.width || 0;
+  let maxHeight = node.geometry.height || 0;
+
+  for (const bend of node.connectedBends) {
+    const ba = bend.properties.bendAllowance;
+    const child = bend.childFlange;
+    const childDims = computeFlatPatternDims(child, thickness);
+    totalWidth += ba + childDims.width;
+    if (childDims.height > maxHeight) maxHeight = childDims.height;
+  }
+
+  return { width: totalWidth, height: maxHeight };
+}
+
 // ── Public API ──────────────────────────────────────────
 
 const api = {
@@ -598,6 +692,115 @@ const api = {
     }
 
     return tree;
+  },
+
+  /** Extract geometry data needed for pricing, from a STEP file */
+  async extractPricingGeometry(
+    fileBuffer: ArrayBuffer,
+    kFactor: number = 0.446
+  ): Promise<{
+    boundingWidth: number;
+    boundingHeight: number;
+    partArea: number;
+    perimeter: number;
+    pierceCount: number;
+    bendCount: number;
+    bendAngles: number[];
+    thickness: number;
+  }> {
+    if (!oc) await initialize();
+
+    const shape = readSTEP(fileBuffer);
+    const faces = extractFaces(shape);
+    const classified = classifyFaces(faces);
+    const adjacency = buildAdjacency(shape, faces);
+
+    // Tessellate for dimension extraction
+    new oc.BRepMesh_IncrementalMesh_2(shape, 0.1, false, 0.1, true);
+
+    // Identify geometry class counts
+    const planes    = classified.filter((f) => f.type === "plane");
+    const cylinders = classified.filter((f) => f.type === "cylinder");
+
+    // Detect thickness from largest seed face
+    const seed = planes.length > 0
+      ? planes.reduce((a, b) => (a.area > b.area ? a : b))
+      : classified[0];
+    const thickness = seed
+      ? detectThickness(classified, adjacency, seed.index)
+      : 2;
+
+    // Find the two largest opposite planar faces (top + bottom of the part)
+    // Sort by area descending; the top face is the largest plane
+    const sortedPlanes = [...planes].sort((a, b) => b.area - a.area);
+    const topFace = sortedPlanes[0]?.face ?? null;
+
+    // Compute face dimensions and perimeter from the largest face
+    let outerPerimeter = 0;
+    let pierceCount = 0;
+    let partArea = 0;
+    let faceWidth = 0;
+    let faceHeight = 0;
+
+    if (topFace) {
+      const dims = computeFaceDimensions(topFace);
+      faceWidth  = dims.width;
+      faceHeight = dims.height;
+      partArea   = sortedPlanes[0].area; // already in mm²
+
+      try {
+        const edgeData = computeFaceEdgeLengths(topFace);
+        outerPerimeter = edgeData.outerPerimeter;
+        pierceCount    = edgeData.innerCount;
+      } catch {
+        // Fallback if OCCT wire iteration fails
+        outerPerimeter = 2 * (faceWidth + faceHeight);
+        pierceCount = 0;
+      }
+    }
+
+    // Build unfold tree to get flat pattern dims and bend data
+    let flatWidth  = faceWidth;
+    let flatHeight = faceHeight;
+    const bendAngles: number[] = [];
+
+    try {
+      const tree = buildUnfoldTree(classified, adjacency, shape, kFactor);
+      if (tree) {
+        // Enrich flange dimensions from tessellation
+        function enrichNode(node: FlangeNode) {
+          const dims = node.geometry.width > 0
+            ? { width: node.geometry.width, height: node.geometry.height }
+            : computeFaceDimensions(
+                classified.find((c) => c.index === parseInt(node.id.replace("flange-", "")))?.face ?? topFace
+              );
+          node.geometry.width  = dims.width;
+          node.geometry.height = dims.height;
+          for (const bend of node.connectedBends) {
+            bendAngles.push((bend.properties.angle * 180) / Math.PI);
+            enrichNode(bend.childFlange);
+          }
+        }
+        enrichNode(tree.rootFlange);
+
+        const flatDims = computeFlatPatternDims(tree.rootFlange, thickness);
+        if (flatDims.width > 0)  flatWidth  = flatDims.width;
+        if (flatDims.height > 0) flatHeight = flatDims.height;
+      }
+    } catch {
+      // Fallback to face dims if tree fails
+    }
+
+    return {
+      boundingWidth:  Math.round(flatWidth  * 10) / 10,
+      boundingHeight: Math.round(flatHeight * 10) / 10,
+      partArea:       Math.round(partArea),
+      perimeter:      Math.round(outerPerimeter * 10) / 10,
+      pierceCount,
+      bendCount:      cylinders.length,
+      bendAngles,
+      thickness:      Math.round(thickness * 100) / 100,
+    };
   },
 
   /** Quick topology dump for diagnostics */
@@ -632,3 +835,4 @@ const api = {
 
 export type GeometryWorkerAPI = typeof api;
 Comlink.expose(api);
+

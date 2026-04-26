@@ -1,258 +1,168 @@
-"use client";
-
-import { useState, useCallback, useMemo } from "react";
-import dynamic from "next/dynamic";
-import { useUnfoldAnimation } from "@/hooks/useUnfoldAnimation";
-import { useGeometryWorker } from "@/hooks/useGeometryWorker";
-import { UnfoldControls } from "@/components/UnfoldControls";
-import { ViewToolbar } from "@/components/ViewToolbar";
-import { createLBracketMock, createUChannelMock } from "@/lib/mock/mock-parts";
-import { MaterialPreset, MATERIAL_PRESETS, UnfoldTree } from "@/lib/types/unfold";
-
-// Dynamic import — R3F must not SSR
-const R3FViewport = dynamic(
-  () => import("@/components/R3FViewport").then((m) => m.R3FViewport),
-  { ssr: false }
-);
-const SheetMetalModel = dynamic(
-  () => import("@/components/SheetMetalModel").then((m) => m.SheetMetalModel),
-  { ssr: false }
-);
-
-type DataSource = "mock" | "kernel";
+import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
 
 // ─────────────────────────────────────────────────────────
-// Inline Layout Components
+// /dashboard — Overview home page
+// Stats cards + quick-action CTAs + recent quotes
 // ─────────────────────────────────────────────────────────
 
-function TopBar() {
-  return (
-    <div className="top-bar">
-      <div className="panel-logo">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M12 2L2 7l10 5 10-5-10-5z" />
-          <path d="M2 17l10 5 10-5" />
-          <path d="M2 12l10 5 10-5" />
-        </svg>
-        <span className="panel-title">MECHLYTIX</span>
-      </div>
-      <div style={{ marginLeft: '16px', borderLeft: '1px solid var(--border-subtle)', paddingLeft: '16px' }}>
-        <span className="panel-subtitle" style={{ marginTop: 0 }}>Sheet Metal Unfolder</span>
-      </div>
-
-      {/* User Menu — pushed to the right */}
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <form action="/auth/signout" method="post">
-          <button
-            type="submit"
-            className="topbar-signout-btn"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            Sign Out
-          </button>
-        </form>
-      </div>
-    </div>
-  );
+async function getOverviewData(userId: string) {
+  const supabase = await createClient();
+  const [
+    { count: quoteCount },
+    { count: remnantCount },
+    { count: materialCount },
+    { data: recentQuotes },
+  ] = await Promise.all([
+    supabase.from("quotes").select("*", { count: "exact", head: true }).eq("user_id", userId),
+    supabase.from("remnants").select("*", { count: "exact", head: true }).eq("user_id", userId).eq("status", "available"),
+    supabase.from("materials").select("*", { count: "exact", head: true }).or(`user_id.eq.${userId},is_system.eq.true`),
+    supabase.from("quotes")
+      .select("id, filename, input_type, unit_price, total_price, status, created_at, quantity")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(5),
+  ]);
+  return { quoteCount: quoteCount ?? 0, remnantCount: remnantCount ?? 0, materialCount: materialCount ?? 0, recentQuotes: recentQuotes ?? [] };
 }
 
-function PrimarySidebar() {
-  return (
-    <div className="primary-sidebar">
-      {/* Workspace */}
-      <div className="relative group flex items-center justify-center">
-        <button className="primary-nav-btn active">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-            <line x1="8" y1="21" x2="16" y2="21" />
-            <line x1="12" y1="17" x2="12" y2="21" />
-          </svg>
-        </button>
-        <span className="absolute left-full ml-3 px-2 py-1 text-[10px] font-medium text-white bg-[#1a1d21] border border-white/10 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50">
-          Unfolder Workspace
-        </span>
-      </div>
-
-      {/* Library */}
-      <div className="relative group flex items-center justify-center">
-        <button className="primary-nav-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          </svg>
-        </button>
-        <span className="absolute left-full ml-3 px-2 py-1 text-[10px] font-medium text-white bg-[#1a1d21] border border-white/10 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50">
-          Parts Library
-        </span>
-      </div>
-
-      {/* Settings */}
-      <div style={{ flex: 1 }} />
-      
-      <div className="relative group flex items-center justify-center">
-        <button className="primary-nav-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
-        <span className="absolute left-full ml-3 px-2 py-1 text-[10px] font-medium text-white bg-[#1a1d21] border border-white/10 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50">
-          Settings
-        </span>
-      </div>
-    </div>
-  );
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    draft: "badge-neutral",
+    sent: "badge-blue",
+    accepted: "badge-green",
+    rejected: "badge-red",
+    expired: "badge-neutral",
+  };
+  return <span className={`status-badge ${map[status] ?? "badge-neutral"}`}>{status}</span>;
 }
 
-export default function DashboardPage() {
-  const [activePartId, setActivePartId] = useState("l-bracket");
-  const [selectedMaterial, setSelectedMaterial] = useState<MaterialPreset>(
-    MATERIAL_PRESETS[0]
-  );
-  const [dataSource, setDataSource] = useState<DataSource>("mock");
-  
-  const [viewState, setViewState] = useState({
-    wireframe: false,
-    showGrid: true,
-    transparent: false,
-  });
+export default async function DashboardOverviewPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
 
-  const { progressRef, state, controls } = useUnfoldAnimation();
-  const worker = useGeometryWorker();
+  const { quoteCount, remnantCount, materialCount, recentQuotes } = await getOverviewData(user.id);
 
-  // Mock unfold tree
-  const mockTree = useMemo(() => {
-    const kFactor = selectedMaterial.kFactor;
-    if (activePartId === "u-channel") return createUChannelMock(kFactor);
-    return createLBracketMock(kFactor);
-  }, [activePartId, selectedMaterial]);
-
-  // Active tree — either mock or from kernel
-  const unfoldTree: UnfoldTree = dataSource === "kernel" && worker.parsedTree
-    ? worker.parsedTree
-    : mockTree;
-
-  const handleMaterialChange = useCallback(
-    (preset: MaterialPreset) => {
-      setSelectedMaterial(preset);
-      controls.reset();
+  const stats = [
+    {
+      label: "Total Quotes",
+      value: quoteCount,
+      icon: "📋",
+      href: "/dashboard/quotes",
+      color: "stat-blue",
     },
-    [controls]
-  );
-
-  const handlePartChange = useCallback(
-    (partId: string) => {
-      setActivePartId(partId);
-      setDataSource("mock");
-      controls.reset();
+    {
+      label: "Available Remnants",
+      value: remnantCount,
+      icon: "♻️",
+      href: "/dashboard/scrap-rack",
+      color: "stat-green",
     },
-    [controls]
-  );
-
-  const handleFileUpload = useCallback(
-    async (file: File) => {
-      controls.reset();
-      await worker.parseFile(file, selectedMaterial.kFactor);
-      setDataSource("kernel");
+    {
+      label: "Materials",
+      value: materialCount,
+      icon: "🧱",
+      href: "/dashboard/materials",
+      color: "stat-orange",
     },
-    [controls, worker, selectedMaterial.kFactor]
-  );
-
-  // Determine scale based on data source
-  const modelScale = dataSource === "kernel" ? 0.005 : 0.01;
+  ];
 
   return (
-    <div className="app-container">
-      <TopBar />
-      
-      <div className="main-content-area">
-        {/* Primary Thin Sidebar */}
-        <PrimarySidebar />
-        
-        {/* Secondary Sidebar (Controls) */}
-        <UnfoldControls
-          state={state}
-          controls={controls}
-          unfoldTree={unfoldTree}
-          selectedMaterial={selectedMaterial}
-          onMaterialChange={handleMaterialChange}
-          onPartChange={handlePartChange}
-          activePartId={activePartId}
-          onFileUpload={handleFileUpload}
-          workerStatus={worker.status}
-        />
+    <div className="dash-page">
+      <div className="dash-page-header">
+        <h1 className="dash-page-title">Overview</h1>
+        <Link href="/dashboard/quoter" className="btn-primary">
+          ⚡ New Quote
+        </Link>
+      </div>
 
-        {/* Viewport Wrapper */}
-        <div className="viewport-wrapper">
-          <div className="viewport-container">
-            <R3FViewport showGrid={viewState.showGrid}>
-              <SheetMetalModel
-                rootFlange={unfoldTree.rootFlange}
-                progressRef={progressRef}
-                material={selectedMaterial}
-                scale={modelScale}
-                wireframe={viewState.wireframe}
-                transparent={viewState.transparent}
-              />
-            </R3FViewport>
-          </div>
-
-          {/* Loading Overlay */}
-          {(worker.status === "initializing" || worker.status === "parsing") && (
-            <div className="loading-overlay">
-              <div className="loading-card">
-                <div className="loading-spinner" />
-                <span className="loading-text">{worker.progressMessage}</span>
-              </div>
+      {/* Stats strip */}
+      <div className="stat-strip">
+        {stats.map((s) => (
+          <Link key={s.label} href={s.href} className={`stat-card ${s.color}`}>
+            <span className="stat-icon">{s.icon}</span>
+            <div className="stat-body">
+              <span className="stat-value">{s.value}</span>
+              <span className="stat-label">{s.label}</span>
             </div>
-          )}
+          </Link>
+        ))}
+      </div>
 
-          {/* Error Toast */}
-          {worker.status === "error" && worker.error && (
-            <div className="error-toast">
-              <span>⚠ {worker.error}</span>
-              <button onClick={() => setDataSource("mock")} className="error-dismiss">
-                Dismiss
-              </button>
-            </div>
-          )}
-
-          {/* Floating View Toolbar */}
-          <ViewToolbar
-            wireframe={viewState.wireframe}
-            onToggleWireframe={() => setViewState(s => ({ ...s, wireframe: !s.wireframe }))}
-            showGrid={viewState.showGrid}
-            onToggleGrid={() => setViewState(s => ({ ...s, showGrid: !s.showGrid }))}
-            transparent={viewState.transparent}
-            onToggleTransparent={() => setViewState(s => ({ ...s, transparent: !s.transparent }))}
-          />
-
-          {/* Status Bar */}
-          <div className="status-bar">
-            <div className="status-left">
-              <span className={`status-dot ${dataSource === "kernel" ? "kernel" : ""}`} />
-              <span>
-                {unfoldTree.metadata.partName} — {selectedMaterial.name}
-                {dataSource === "kernel" && " (Imported)"}
-              </span>
-            </div>
-            <div className="status-right">
-              {worker.status === "ready" && (
-                <span className="status-kernel-badge">OCCT ✓</span>
-              )}
-              <span>
-                Flat: {unfoldTree.metadata.flatPatternDimensions.width} ×{" "}
-                {unfoldTree.metadata.flatPatternDimensions.height} mm
-              </span>
-              <span className="status-separator">|</span>
-              <span>K = {selectedMaterial.kFactor}</span>
-            </div>
-          </div>
+      {/* Quick actions */}
+      <div className="overview-section">
+        <h2 className="section-heading">Quick Actions</h2>
+        <div className="quick-actions">
+          <Link href="/dashboard/quoter" className="quick-action-card">
+            <span className="qa-icon">⚡</span>
+            <span className="qa-title">Instant Quote</span>
+            <span className="qa-desc">Upload a STEP or DXF file to get a price</span>
+          </Link>
+          <Link href="/dashboard/unfolder" className="quick-action-card">
+            <span className="qa-icon">🔲</span>
+            <span className="qa-title">3D Unfolder</span>
+            <span className="qa-desc">Unfold a STEP file and export a flat DXF</span>
+          </Link>
+          <Link href="/dashboard/scrap-rack" className="quick-action-card">
+            <span className="qa-icon">♻️</span>
+            <span className="qa-title">Log Remnant</span>
+            <span className="qa-desc">Register leftover material after cutting</span>
+          </Link>
+          <Link href="/dashboard/materials" className="quick-action-card">
+            <span className="qa-icon">🧱</span>
+            <span className="qa-title">Materials</span>
+            <span className="qa-desc">Manage your material database and prices</span>
+          </Link>
         </div>
+      </div>
+
+      {/* Recent quotes */}
+      <div className="overview-section">
+        <div className="section-header-row">
+          <h2 className="section-heading">Recent Quotes</h2>
+          <Link href="/dashboard/quotes" className="btn-ghost-sm">View all →</Link>
+        </div>
+
+        {recentQuotes.length === 0 ? (
+          <div className="empty-state">
+            <p>No quotes yet.</p>
+            <Link href="/dashboard/quoter" className="btn-primary">Create your first quote →</Link>
+          </div>
+        ) : (
+          <div className="table-card">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Type</th>
+                  <th>Qty</th>
+                  <th>Unit Price</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentQuotes.map((q) => (
+                  <tr key={q.id}>
+                    <td className="td-filename">
+                      <Link href={`/dashboard/quotes/${q.id}`}>{q.filename}</Link>
+                    </td>
+                    <td><span className="input-type-badge">{q.input_type}</span></td>
+                    <td>{q.quantity ?? 1}</td>
+                    <td>{q.unit_price != null ? `£${q.unit_price.toFixed(2)}` : "—"}</td>
+                    <td className="td-price">{q.total_price != null ? `£${q.total_price.toFixed(2)}` : "—"}</td>
+                    <td><StatusBadge status={q.status ?? "draft"} /></td>
+                    <td className="td-date">
+                      {q.created_at ? new Date(q.created_at).toLocaleDateString("en-GB") : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
