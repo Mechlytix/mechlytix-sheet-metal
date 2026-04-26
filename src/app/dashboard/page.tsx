@@ -13,6 +13,8 @@ async function getOverviewData(userId: string) {
     { count: remnantCount },
     { count: materialCount },
     { data: recentQuotes },
+    { data: pipelineQuotes },
+    { data: acceptedQuotes },
   ] = await Promise.all([
     supabase.from("quotes").select("*", { count: "exact", head: true }).eq("user_id", userId),
     supabase.from("remnants").select("*", { count: "exact", head: true }).eq("user_id", userId).eq("status", "available"),
@@ -22,9 +24,25 @@ async function getOverviewData(userId: string) {
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(5),
+    // Pipeline: draft + sent
+    supabase.from("quotes").select("total_price").eq("user_id", userId).in("status", ["draft", "sent"]),
+    // Won: accepted
+    supabase.from("quotes").select("total_price").eq("user_id", userId).eq("status", "accepted"),
   ]);
-  return { quoteCount: quoteCount ?? 0, remnantCount: remnantCount ?? 0, materialCount: materialCount ?? 0, recentQuotes: recentQuotes ?? [] };
+
+  const pipelineValue = (pipelineQuotes ?? []).reduce((s, q) => s + (q.total_price ?? 0), 0);
+  const acceptedValue = (acceptedQuotes ?? []).reduce((s, q) => s + (q.total_price ?? 0), 0);
+
+  return {
+    quoteCount: quoteCount ?? 0,
+    remnantCount: remnantCount ?? 0,
+    materialCount: materialCount ?? 0,
+    pipelineValue,
+    acceptedValue,
+    recentQuotes: recentQuotes ?? [],
+  };
 }
+
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -42,28 +60,31 @@ export default async function DashboardOverviewPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { quoteCount, remnantCount, materialCount, recentQuotes } = await getOverviewData(user.id);
+  const { quoteCount, remnantCount, materialCount, pipelineValue, acceptedValue, recentQuotes } = await getOverviewData(user.id);
 
   const stats = [
     {
-      label: "Total Quotes",
-      value: quoteCount,
+      label: "Pipeline Value",
+      value: `£${pipelineValue.toFixed(0)}`,
+      sub: `${quoteCount} quotes`,
       icon: "📋",
       href: "/dashboard/quotes",
       color: "stat-blue",
     },
     {
-      label: "Available Remnants",
-      value: remnantCount,
-      icon: "♻️",
-      href: "/dashboard/scrap-rack",
+      label: "Won Revenue",
+      value: acceptedValue > 0 ? `£${acceptedValue.toFixed(0)}` : "—",
+      sub: "accepted quotes",
+      icon: "✅",
+      href: "/dashboard/quotes",
       color: "stat-green",
     },
     {
-      label: "Materials",
-      value: materialCount,
-      icon: "🧱",
-      href: "/dashboard/materials",
+      label: "Available Remnants",
+      value: remnantCount,
+      sub: "on scrap rack",
+      icon: "♻️",
+      href: "/dashboard/scrap-rack",
       color: "stat-orange",
     },
   ];
@@ -85,6 +106,7 @@ export default async function DashboardOverviewPage() {
             <div className="stat-body">
               <span className="stat-value">{s.value}</span>
               <span className="stat-label">{s.label}</span>
+              {"sub" in s && s.sub && <span className="stat-sub">{s.sub}</span>}
             </div>
           </Link>
         ))}

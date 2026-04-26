@@ -14,6 +14,16 @@ import type { Material, MachineProfile } from "@/lib/types/database";
 // /dashboard/quoter — Unified STEP / DXF Instant Quoter
 // ─────────────────────────────────────────────────────────
 
+interface RemnantMatch {
+  id: string;
+  width_mm: number;
+  height_mm: number;
+  thickness_mm: number;
+  location: string | null;
+  material_id: string | null;
+  materials: { name: string; color_hex: string | null } | null;
+}
+
 type Phase =
   | { name: "idle" }
   | { name: "analyzing"; filename: string }
@@ -244,6 +254,11 @@ export default function QuoterPage() {
   const [quantity, setQuantity]     = useState(1);
   const [markup, setMarkup]         = useState(15);
   const [thicknessInput, setThicknessInput] = useState(""); // DXF only
+  const [usingRemnant, setUsingRemnant]     = useState(false); // no waste when using remnant
+
+  // Remnant check results
+  const [remnantMatches, setRemnantMatches]   = useState<RemnantMatch[]>([]);
+  const [remnantDismissed, setRemnantDismissed] = useState(false);
 
   // Computed result
   const [result, setResult] = useState<PricingResult | null>(null);
@@ -295,10 +310,38 @@ export default function QuoterPage() {
       costPerBend:        mach.cost_per_bend ?? 2.5,
       quantity,
       markupPercent: markup,
-      wasteFactor: 1.15,
+      // No nesting waste when cutting from an existing remnant
+      wasteFactor: usingRemnant ? 1.0 : 1.15,
     });
     setResult(r);
-  }, [phase, selectedMaterialId, selectedMachineId, quantity, markup, thicknessInput, materials, machines]);
+  }, [phase, geometry, selectedMaterialId, selectedMachineId, quantity, markup, thicknessInput, materials, machines, usingRemnant]);
+
+  // Check scrap rack for remnants large enough to fit this flat pattern
+  useEffect(() => {
+    if (!geometry || !userId || phase.name !== "ready") {
+      setRemnantMatches([]);
+      setRemnantDismissed(false);
+      return;
+    }
+    const { boundingWidth, boundingHeight } = geometry;
+    if (!boundingWidth || !boundingHeight) return;
+
+    const supabase = createClient();
+    supabase
+      .from("remnants")
+      .select("id, width_mm, height_mm, thickness_mm, location, material_id, materials(name, color_hex)")
+      .eq("user_id", userId)
+      .eq("status", "available")
+      .gte("width_mm", boundingWidth)
+      .gte("height_mm", boundingHeight)
+      .order("width_mm", { ascending: true })
+      .limit(3)
+      .then(({ data }) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setRemnantMatches((data as any[]) ?? []);
+      });
+  }, [geometry, userId, phase.name]);
+
 
   // Handle file drop
   const handleFile = useCallback(async (file: File) => {
@@ -418,7 +461,14 @@ export default function QuoterPage() {
           <p className="dash-page-subtitle">Drop a STEP or DXF file to get an instant price</p>
         </div>
         {phase.name !== "idle" && phase.name !== "analyzing" && (
-          <button className="btn-ghost" onClick={() => { setPhase({ name: "idle" }); setResult(null); }}>
+          <button className="btn-ghost" onClick={() => {
+            setPhase({ name: "idle" });
+            setResult(null);
+            setGeometry(null);
+            setRemnantMatches([]);
+            setRemnantDismissed(false);
+            setUsingRemnant(false);
+          }}>
             ← New File
           </button>
         )}
@@ -436,6 +486,48 @@ export default function QuoterPage() {
 
           {phase.name === "ready" && geometry && (
             <GeometryCard geo={geometry} units={units} />
+          )}
+
+          {/* ── Remnant Match Banner ── */}
+          {phase.name === "ready" && remnantMatches.length > 0 && !remnantDismissed && (
+            <div className="remnant-banner">
+              <div className="rb-icon">♻️</div>
+              <div className="rb-body">
+                <p className="rb-title">
+                  {remnantMatches.length} remnant{remnantMatches.length > 1 ? "s" : ""} on your rack fit this part
+                </p>
+                <div className="rb-list">
+                  {remnantMatches.map((r) => (
+                    <button
+                      key={r.id}
+                      className={`rb-item ${usingRemnant && selectedMaterialId === (r.material_id ?? "") ? "rb-item-active" : ""}`}
+                      onClick={() => {
+                        if (r.material_id) setSelectedMaterialId(r.material_id);
+                        if (r.thickness_mm) setThicknessInput(String(r.thickness_mm));
+                        setUsingRemnant(true);
+                      }}
+                    >
+                      <span
+                        className="rb-dot"
+                        style={{ background: r.materials?.color_hex ?? "#888" }}
+                      />
+                      <span className="rb-dims">
+                        {r.width_mm} × {r.height_mm} × {r.thickness_mm}mm
+                      </span>
+                      {r.location && (
+                        <span className="rb-loc">📍 {r.location}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {usingRemnant && (
+                  <p className="rb-using">
+                    ✓ Using remnant — no nesting waste applied (15% saving)
+                  </p>
+                )}
+              </div>
+              <button className="rb-dismiss" onClick={() => { setRemnantDismissed(true); setUsingRemnant(false); }}>✕</button>
+            </div>
           )}
 
           {phase.name === "saving" && (
