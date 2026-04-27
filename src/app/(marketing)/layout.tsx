@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import "../marketing.css";
+import "../marketing2.css";
 
 // ─────────────────────────────────────────────────────────
 // Marketing Shell — Shared nav + footer for all public pages

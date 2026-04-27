@@ -81,8 +81,13 @@ function readSTEP(buffer: ArrayBuffer): any {
 
   const reader = new oc.STEPControl_Reader_1();
   const readResult = reader.ReadFile("/upload.step");
-  if (readResult !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
-    throw new Error(`STEP read failed with status: ${readResult}`);
+  const expected = oc.IFSelect_ReturnStatus.IFSelect_RetDone;
+
+  const actualVal = typeof readResult === "object" ? readResult.value : readResult;
+  const expectedVal = typeof expected === "object" ? expected.value : expected;
+
+  if (actualVal !== expectedVal) {
+    throw new Error(`STEP read failed with status: ${actualVal}`);
   }
 
   reader.TransferRoots(new oc.Message_ProgressRange_1());

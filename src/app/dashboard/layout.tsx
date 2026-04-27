@@ -3,6 +3,7 @@ import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { DashboardProvider } from "@/lib/dashboard-context";
 import { redirect } from "next/navigation";
 import type { Currency } from "@/lib/types/database";
+import "../dashboard.css";
 
 // ─────────────────────────────────────────────────────────
 // Dashboard shell layout
