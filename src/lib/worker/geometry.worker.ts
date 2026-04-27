@@ -32,6 +32,8 @@ async function initialize(): Promise<{ status: string }> {
         }
         return filename;
       },
+      print: (text: string) => console.log("[OC Print]:", text),
+      printErr: (text: string) => console.error("[OC Error]:", text),
     });
 
     return { status: "ready" };
@@ -47,6 +49,8 @@ async function initialize(): Promise<{ status: string }> {
     oc = await factoryFn({
       locateFile: (f: string) =>
         f.endsWith(".wasm") ? "/wasm/opencascade.wasm.wasm" : f,
+      print: (text: string) => console.log("[OC Print]:", text),
+      printErr: (text: string) => console.error("[OC Error]:", text),
     });
     return { status: "ready (fallback)" };
   }
@@ -81,6 +85,11 @@ function readSTEP(buffer: ArrayBuffer): any {
   const dummyReader = new oc.STEPControl_Reader_1();
   const dummyRes = dummyReader.ReadFile("/dummy.step");
   const dummyVal = typeof dummyRes === "object" ? dummyRes.value : dummyRes;
+  console.log("Dummy read code:", dummyVal);
+  if (dummyVal !== 1) {
+    console.log("Dummy failed, printing check load:");
+    dummyReader.PrintCheckLoad(true, 1);
+  }
 
   // Write the user's file to WASM virtual FS
   let uint8 = new Uint8Array(buffer);
