@@ -77,7 +77,12 @@ function readSTEP(buffer: ArrayBuffer): any {
 
   // Write to WASM virtual FS
   const uint8 = new Uint8Array(buffer);
-  oc.FS.writeFile("/upload.step", uint8);
+  try {
+    oc.FS.unlink("/upload.step");
+  } catch (e) {
+    // Ignore
+  }
+  oc.FS.createDataFile("/", "upload.step", uint8, true, true);
 
   const reader = new oc.STEPControl_Reader_1();
   const readResult = reader.ReadFile("/upload.step");

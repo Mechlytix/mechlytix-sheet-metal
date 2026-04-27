@@ -1,7 +1,8 @@
 const fs = require('fs');
-const initOpenCascade = require('opencascade.js');
 
 async function test() {
+  const mod = await import('opencascade.js/dist/opencascade.wasm.js');
+  const initOpenCascade = mod.default || mod;
   const oc = await initOpenCascade();
   
   // Create a dummy simple STEP file string
@@ -37,11 +38,21 @@ END-ISO-10303-21;
 `;
 
   const uint8 = new TextEncoder().encode(stepContent);
-  oc.FS.writeFile("/test.step", uint8);
+  oc.FS.writeFile("/upload.step", uint8);
   const reader = new oc.STEPControl_Reader_1();
-  const res = reader.ReadFile("/test.step");
+  const res = reader.ReadFile("/upload.step");
   const actualVal = typeof res === "object" ? res.value : res;
-  console.log("Read result:", actualVal);
+  console.log("Read result for /upload.step:", actualVal);
+  
+  oc.FS.writeFile("upload2.step", uint8);
+  const res2 = reader.ReadFile("upload2.step");
+  const actualVal2 = typeof res2 === "object" ? res2.value : res2;
+  console.log("Read result for upload2.step:", actualVal2);
+  
+  // What if we try to read a non-existent file?
+  const res3 = reader.ReadFile("doesnotexist.step");
+  const actualVal3 = typeof res3 === "object" ? res3.value : res3;
+  console.log("Read result for non-existent:", actualVal3);
 }
 
 test().catch(console.error);
