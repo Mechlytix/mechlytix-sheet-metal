@@ -87,7 +87,8 @@ function readSTEP(buffer: ArrayBuffer): any {
   const expectedVal = typeof expected === "object" ? expected.value : expected;
 
   if (actualVal !== expectedVal) {
-    throw new Error(`STEP read failed with status: ${actualVal}`);
+    const head = new TextDecoder().decode(uint8.slice(0, 20)).replace(/\n/g, '\\n');
+    throw new Error(`STEP read failed (code: ${actualVal}). Size: ${uint8.length}B, Head: "${head}"`);
   }
 
   reader.TransferRoots(new oc.Message_ProgressRange_1());
