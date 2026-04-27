@@ -81,9 +81,9 @@ function readSTEP(buffer: ArrayBuffer): any {
 
   // Test with a known valid dummy STEP file first
   const dummySTEP = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN_CC2 { 1 2 10303 214 -1 1 5 4 }'));\nENDSEC;\nDATA;\n#1=APPLICATION_PROTOCOL_DEFINITION('','',2000,#2);\n#2=APPLICATION_CONTEXT('');\n#3=SHAPE_DEFINITION_REPRESENTATION(#4,#10);\n#4=PRODUCT_DEFINITION_SHAPE('','',#5);\n#5=PRODUCT_DEFINITION('','',#6,#9);\n#6=PRODUCT_DEFINITION_FORMATION('','',#7);\n#7=PRODUCT('','','',(#8));\n#8=PRODUCT_CONTEXT('',#2,'');\n#9=PRODUCT_DEFINITION_CONTEXT('',#2,'');\n#10=SHAPE_REPRESENTATION('',(#11),#15);\n#11=AXIS2_PLACEMENT_3D('',#12,#13,#14);\n#12=CARTESIAN_POINT('',(0.,0.,0.));\n#13=DIRECTION('',(0.,0.,1.));\n#14=DIRECTION('',(1.,0.,0.));\n#15=(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#19)) GLOBAL_UNIT_ASSIGNED_CONTEXT((#16,#17,#18)) REPRESENTATION_CONTEXT('',''));\n#16=(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.));\n#17=(NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.));\n#18=(NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT());\n#19=UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),#16,'','');\n#20=PRODUCT_RELATED_PRODUCT_CATEGORY('',$,(#7));\nENDSEC;\nEND-ISO-10303-21;\n`;
-  oc.FS.writeFile("/dummy.step", new TextEncoder().encode(dummySTEP));
+  oc.FS.writeFile("dummy.step", new TextEncoder().encode(dummySTEP));
   const dummyReader = new oc.STEPControl_Reader_1();
-  const dummyRes = dummyReader.ReadFile("/dummy.step");
+  const dummyRes = dummyReader.ReadFile("dummy.step");
   const dummyVal = typeof dummyRes === "object" ? dummyRes.value : dummyRes;
   console.log("Dummy read code:", dummyVal);
   if (dummyVal !== 1) {
@@ -99,10 +99,10 @@ function readSTEP(buffer: ArrayBuffer): any {
     uint8 = uint8.slice(3);
   }
 
-  oc.FS.writeFile("/upload.step", uint8);
+  oc.FS.writeFile("upload.step", uint8);
 
   const reader = new oc.STEPControl_Reader_1();
-  const readResult = reader.ReadFile("/upload.step");
+  const readResult = reader.ReadFile("upload.step");
   const expected = oc.IFSelect_ReturnStatus.IFSelect_RetDone;
 
   const actualVal = typeof readResult === "object" ? readResult.value : readResult;
