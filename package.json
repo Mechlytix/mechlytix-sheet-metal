@@ -10,6 +10,14 @@
     "lint": "eslint",
     "postinstall": "node -e \"const fs=require('fs');const src='node_modules/opencascade.js/dist/opencascade.wasm.wasm';const dir='public/wasm';if(fs.existsSync(src)){fs.mkdirSync(dir,{recursive:true});fs.copyFileSync(src,dir+'/opencascade.wasm.wasm');console.log('✓ WASM binary copied to public/wasm/');}else{console.warn('⚠ opencascade.js not installed yet, skipping WASM copy.');}\""
   },
+  "browserslist": [
+    "chrome >= 90",
+    "firefox >= 90",
+    "safari >= 14",
+    "edge >= 90",
+    "not op_mini all",
+    "not dead"
+  ],
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
@@ -38,3 +46,4 @@
     "typescript": "^5"
   }
 }
+
