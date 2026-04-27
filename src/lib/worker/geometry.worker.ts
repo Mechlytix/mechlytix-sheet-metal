@@ -76,7 +76,13 @@ function readSTEP(buffer: ArrayBuffer): any {
   if (!oc) throw new Error("Kernel not initialized");
 
   // Write to WASM virtual FS
-  const uint8 = new Uint8Array(buffer);
+  let uint8 = new Uint8Array(buffer);
+  
+  // Strip UTF-8 BOM if present
+  if (uint8.length >= 3 && uint8[0] === 0xef && uint8[1] === 0xbb && uint8[2] === 0xbf) {
+    uint8 = uint8.slice(3);
+  }
+
   try {
     oc.FS.unlink("/upload.step");
   } catch (e) {
@@ -85,15 +91,17 @@ function readSTEP(buffer: ArrayBuffer): any {
   oc.FS.createDataFile("/", "upload.step", uint8, true, true);
 
   const reader = new oc.STEPControl_Reader_1();
-  const readResult = reader.ReadFile("/upload.step");
+  // Try passing just the filename without the leading slash
+  const readResult = reader.ReadFile("upload.step");
   const expected = oc.IFSelect_ReturnStatus.IFSelect_RetDone;
 
   const actualVal = typeof readResult === "object" ? readResult.value : readResult;
   const expectedVal = typeof expected === "object" ? expected.value : expected;
 
   if (actualVal !== expectedVal) {
+    const headHex = Array.from(uint8.slice(0, 5)).map(b => b.toString(16).padStart(2, '0')).join(' ');
     const head = new TextDecoder().decode(uint8.slice(0, 20)).replace(/\n/g, '\\n');
-    throw new Error(`STEP read failed (code: ${actualVal}). Size: ${uint8.length}B, Head: "${head}"`);
+    throw new Error(`STEP read failed (code: ${actualVal}). Size: ${uint8.length}B, Hex: [${headHex}], Head: "${head}"`);
   }
 
   reader.TransferRoots(new oc.Message_ProgressRange_1());
