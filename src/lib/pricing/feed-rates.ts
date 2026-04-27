@@ -47,20 +47,56 @@ export function getFeedRate(
   powerKw: number = 4
 ): number {
   const table = FEED_RATES_4KW[category] ?? FEED_RATES_4KW.mild_steel;
+  return interpolateFromTable(table, thicknessMm, powerKw / 4);
+}
+
+/**
+ * Lookup feed rate using a machine's custom table first,
+ * falling back to built-in 4kW defaults if no custom entry exists.
+ *
+ * @param customFeedRates  The `feed_rates` JSONB from machine_profiles (may be null)
+ * @param category         Material category key (e.g. "mild_steel")
+ * @param thicknessMm      Part thickness in mm
+ * @param powerKw          Machine power — only applied to built-in fallback
+ */
+export function getFeedRateWithCustom(
+  customFeedRates: unknown,
+  category: string,
+  thicknessMm: number,
+  powerKw: number = 4
+): number {
+  if (customFeedRates && typeof customFeedRates === "object") {
+    const custom = customFeedRates as Record<string, Record<string, number>>;
+    const catTable = custom[category];
+    if (catTable && typeof catTable === "object" && Object.keys(catTable).length > 0) {
+      // Use custom table — no power scaling (values are machine-specific actuals)
+      return interpolateFromTable(catTable, thicknessMm, 1);
+    }
+  }
+  // Fall back to built-in table with power scaling
+  return getFeedRate(category, thicknessMm, powerKw);
+}
+
+/** Shared interpolation logic */
+function interpolateFromTable(
+  table: Record<string, number>,
+  thicknessMm: number,
+  powerScale: number
+): number {
   const thicknesses = Object.keys(table).map(Number).sort((a, b) => a - b);
 
   // Exact match
   const exact = table[thicknessMm.toString()];
-  if (exact) return scaleFeedRate(exact, powerKw);
+  if (exact !== undefined) return scaleFeedRate(exact, powerScale);
 
-  // Below range
+  // Below range — clamp to minimum
   if (thicknessMm <= thicknesses[0]) {
-    return scaleFeedRate(table[thicknesses[0].toString()], powerKw);
+    return scaleFeedRate(table[thicknesses[0].toString()], powerScale);
   }
 
-  // Above range
+  // Above range — clamp to maximum
   if (thicknessMm >= thicknesses[thicknesses.length - 1]) {
-    return scaleFeedRate(table[thicknesses[thicknesses.length - 1].toString()], powerKw);
+    return scaleFeedRate(table[thicknesses[thicknesses.length - 1].toString()], powerScale);
   }
 
   // Linear interpolation between bracketing values
@@ -71,14 +107,14 @@ export function getFeedRate(
       const t = (thicknessMm - lo) / (hi - lo);
       const rateLo = table[lo.toString()];
       const rateHi = table[hi.toString()];
-      return scaleFeedRate(rateLo + t * (rateHi - rateLo), powerKw);
+      return scaleFeedRate(rateLo + t * (rateHi - rateLo), powerScale);
     }
   }
 
-  return scaleFeedRate(3000, powerKw); // fallback
+  return scaleFeedRate(3000, powerScale); // fallback
 }
 
-/** Scale feed rate linearly by machine power relative to 4kW baseline */
-function scaleFeedRate(rate: number, powerKw: number): number {
-  return Math.round(rate * (powerKw / 4));
+/** Scale feed rate linearly by power relative to baseline */
+function scaleFeedRate(rate: number, powerScale: number): number {
+  return Math.round(rate * powerScale);
 }

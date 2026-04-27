@@ -112,6 +112,8 @@ export type Database = {
           pierce_count: number | null;
           quantity: number | null;
           setup_cost: number | null;
+          share_token: string | null;
+          share_enabled: boolean | null;
           status: string | null;
           thickness_mm: number | null;
           total_price: number | null;
@@ -220,15 +222,47 @@ export type Database = {
       };
       profiles: {
         Row: {
+          address_line1: string | null;
+          address_line2: string | null;
           avatar_url: string | null;
           company: string | null;
           created_at: string | null;
           full_name: string | null;
           id: string;
+          logo_url: string | null;
+          phone: string | null;
+          updated_at: string | null;
+          website: string | null;
+        };
+        Insert: {
+          id: string;
+          full_name?: string | null;
+          company?: string | null;
+          address_line1?: string | null;
+          address_line2?: string | null;
+          logo_url?: string | null;
+          phone?: string | null;
+          website?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Relationships: [];
+      };
+      user_settings: {
+        Row: {
+          user_id: string;
+          default_markup_percent: number;
+          quote_expiry_days: number;
+          currency: string;
+          created_at: string | null;
           updated_at: string | null;
         };
-        Insert: { id: string; full_name?: string | null; company?: string | null };
-        Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Insert: {
+          user_id: string;
+          default_markup_percent?: number;
+          quote_expiry_days?: number;
+          currency?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["user_settings"]["Insert"]>;
         Relationships: [];
       };
     };
@@ -248,6 +282,7 @@ export type Quote = Database["public"]["Tables"]["quotes"]["Row"];
 export type Remnant = Database["public"]["Tables"]["remnants"]["Row"];
 export type Upload = Database["public"]["Tables"]["uploads"]["Row"];
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+export type UserSettings = Database["public"]["Tables"]["user_settings"]["Row"];
 
 export type MaterialCategory =
   | "stainless"
@@ -260,3 +295,10 @@ export type MaterialCategory =
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
 export type RemnantStatus = "available" | "reserved" | "consumed" | "scrapped";
 export type MachineType = "laser" | "waterjet" | "plasma" | "punch";
+export type Currency = "GBP" | "EUR" | "USD";
+
+export const CURRENCY_SYMBOLS: Record<Currency, string> = {
+  GBP: "£",
+  EUR: "€",
+  USD: "$",
+};

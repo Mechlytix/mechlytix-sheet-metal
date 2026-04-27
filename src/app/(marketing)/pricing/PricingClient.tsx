@@ -93,11 +93,22 @@ export default function PricingClient() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
+  const [waitlistError, setWaitlistError] = useState("");
 
-  const handleWaitlist = (e: React.FormEvent) => {
+  const handleWaitlist = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real implementation, this would POST to an API
-    setWaitlistSubmitted(true);
+    setWaitlistError("");
+    try {
+      const res = await fetch("/pricing/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: waitlistEmail }),
+      });
+      if (!res.ok) throw new Error("failed");
+      setWaitlistSubmitted(true);
+    } catch {
+      setWaitlistError("Something went wrong. Please try again.");
+    }
   };
 
   return (
@@ -174,20 +185,25 @@ export default function PricingClient() {
               <p>You&apos;re on the list! We&apos;ll be in touch soon.</p>
             </div>
           ) : (
-            <form className="mkt-waitlist-form" onSubmit={handleWaitlist}>
-              <input
-                type="email"
-                required
-                placeholder="your@email.com"
-                value={waitlistEmail}
-                onChange={(e) => setWaitlistEmail(e.target.value)}
-                className="mkt-waitlist-input"
-                id="waitlist-email"
-              />
-              <button type="submit" className="mkt-cta-primary" id="waitlist-submit">
-                Join Waitlist
-              </button>
-            </form>
+            <>
+              <form className="mkt-waitlist-form" onSubmit={handleWaitlist}>
+                <input
+                  type="email"
+                  required
+                  placeholder="your@email.com"
+                  value={waitlistEmail}
+                  onChange={(e) => setWaitlistEmail(e.target.value)}
+                  className="mkt-waitlist-input"
+                  id="waitlist-email"
+                />
+                <button type="submit" className="mkt-cta-primary" id="waitlist-submit">
+                  Join Waitlist
+                </button>
+              </form>
+              {waitlistError && (
+                <p style={{ marginTop: 10, fontSize: 13, color: "#f87171" }}>{waitlistError}</p>
+              )}
+            </>
           )}
         </ScrollReveal>
       </section>

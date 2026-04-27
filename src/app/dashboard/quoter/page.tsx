@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDashboard } from "@/lib/dashboard-context";
 import { parseDXFGeometry } from "@/lib/dxf/parse-dxf";
 import { calculatePrice } from "@/lib/pricing/cost-model";
-import { getFeedRate } from "@/lib/pricing/feed-rates";
+import { getFeedRateWithCustom } from "@/lib/pricing/feed-rates";
 import { formatCurrency, formatLength } from "@/lib/units";
 import type { PricingGeometry, PricingResult } from "@/lib/pricing/types";
 import type { Material, MachineProfile } from "@/lib/types/database";
@@ -253,6 +253,7 @@ export default function QuoterPage() {
   const [selectedMachineId, setSelectedMachineId]   = useState<string>("");
   const [quantity, setQuantity]     = useState(1);
   const [markup, setMarkup]         = useState(15);
+  const [expiryDays, setExpiryDays] = useState(30);
   const [thicknessInput, setThicknessInput] = useState(""); // DXF only
   const [usingRemnant, setUsingRemnant]     = useState(false); // no waste when using remnant
 
@@ -263,7 +264,7 @@ export default function QuoterPage() {
   // Computed result
   const [result, setResult] = useState<PricingResult | null>(null);
 
-  // Load materials + machines + user
+  // Load materials + machines + user + defaults
   useEffect(() => {
     async function load() {
       const supabase = createClient();
@@ -271,14 +272,26 @@ export default function QuoterPage() {
       if (!user) return;
       setUserId(user.id);
 
-      const [{ data: mats }, { data: machs }] = await Promise.all([
+      const [{ data: mats }, { data: machs }, { data: settings }] = await Promise.all([
         supabase.from("materials").select("*").or(`is_system.eq.true,user_id.eq.${user.id}`).order("category").order("name"),
         supabase.from("machine_profiles").select("*").or(`is_system.eq.true,user_id.eq.${user.id}`).order("name"),
+        supabase.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
       ]);
       setMaterials(mats ?? []);
       setMachines(machs ?? []);
+
+      // Apply saved defaults
+      if (settings) {
+        setMarkup(settings.default_markup_percent ?? 15);
+        setExpiryDays(settings.quote_expiry_days ?? 30);
+      }
+
       if (mats && mats.length > 0) setSelectedMaterialId(mats[0].id);
-      if (machs && machs.length > 0) setSelectedMachineId(machs[0].id);
+      // Prefer the default machine
+      if (machs && machs.length > 0) {
+        const def = machs.find((m) => m.is_default) ?? machs[0];
+        setSelectedMachineId(def.id);
+      }
     }
     load();
   }, []);
@@ -296,7 +309,7 @@ export default function QuoterPage() {
       ? geo.thickness
       : parseFloat(thicknessInput) || 2;
 
-    const feedRate = getFeedRate(mat.category, thickMm, mach.power_kw ?? 4);
+    const feedRate = getFeedRateWithCustom(mach.feed_rates, mat.category, thickMm, mach.power_kw ?? 4);
 
     const r = calculatePrice({
       geometry: { ...geo, thickness: thickMm },
@@ -589,7 +602,8 @@ export default function QuoterPage() {
                 </select>
                 {selectedMach && selectedMat && (
                   <span className="field-hint">
-                    Feed rate: {getFeedRate(
+                    Feed rate: {getFeedRateWithCustom(
+                      selectedMach.feed_rates,
                       selectedMat.category,
                       geometry.thicknessConfidence === "detected" ? geometry.thickness : (parseFloat(thicknessInput) || 2),
                       selectedMach.power_kw ?? 4

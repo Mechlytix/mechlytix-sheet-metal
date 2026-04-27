@@ -14,6 +14,7 @@ const nextConfig: NextConfig = {
   //    so the WebWorker can fetch() it by URL at runtime.
   // ─────────────────────────────────────────────────────────
   turbopack: {
+    root: __dirname,
     resolveAlias: {
       // Map the WASM binary import to its physical location
       "./dist/opencascade.wasm.wasm":

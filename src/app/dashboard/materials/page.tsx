@@ -30,22 +30,25 @@ const CATEGORY_COLORS: Record<MaterialCategory, string> = {
 
 // ─── Add Material Modal ────────────────────────────────────
 
-interface AddMaterialModalProps {
+interface MaterialModalProps {
   onClose: () => void;
   onSaved: () => void;
   userId: string;
+  /** When provided, the modal runs in edit mode */
+  initialValues?: Material;
 }
 
-function AddMaterialModal({ onClose, onSaved, userId }: AddMaterialModalProps) {
+function AddMaterialModal({ onClose, onSaved, userId, initialValues }: MaterialModalProps) {
+  const isEdit = !!initialValues;
   const [form, setForm] = useState({
-    name: "",
-    grade: "",
-    category: "mild_steel" as MaterialCategory,
-    density_kg_m3: "",
-    cost_per_kg: "",
-    scrap_value_per_kg: "",
-    k_factor: "0.44",
-    notes: "",
+    name:               initialValues?.name ?? "",
+    grade:              initialValues?.grade ?? "",
+    category:           (initialValues?.category ?? "mild_steel") as MaterialCategory,
+    density_kg_m3:      String(initialValues?.density_kg_m3 ?? ""),
+    cost_per_kg:        String(initialValues?.cost_per_kg ?? ""),
+    scrap_value_per_kg: String(initialValues?.scrap_value_per_kg ?? ""),
+    k_factor:           String(initialValues?.k_factor ?? "0.44"),
+    notes:              initialValues?.notes ?? "",
   });
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -57,7 +60,7 @@ function AddMaterialModal({ onClose, onSaved, userId }: AddMaterialModalProps) {
     setError("");
     const supabase = createClient();
     startTransition(async () => {
-      const { error: err } = await supabase.from("materials").insert({
+      const payload = {
         user_id: userId,
         name: form.name,
         grade: form.grade || null,
@@ -68,9 +71,21 @@ function AddMaterialModal({ onClose, onSaved, userId }: AddMaterialModalProps) {
         k_factor: parseFloat(form.k_factor) || 0.44,
         color_hex: CATEGORY_COLORS[form.category],
         notes: form.notes || null,
-        is_system: false,
-      });
-      if (err) { setError(err.message); return; }
+      };
+
+      if (isEdit && initialValues) {
+        const { error: err } = await supabase
+          .from("materials")
+          .update({ ...payload, updated_at: new Date().toISOString() })
+          .eq("id", initialValues.id);
+        if (err) { setError(err.message); return; }
+      } else {
+        const { error: err } = await supabase.from("materials").insert({
+          ...payload,
+          is_system: false,
+        });
+        if (err) { setError(err.message); return; }
+      }
       onSaved();
     });
   }
@@ -79,7 +94,7 @@ function AddMaterialModal({ onClose, onSaved, userId }: AddMaterialModalProps) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Add Material</h2>
+          <h2>{isEdit ? "Edit Material" : "Add Material"}</h2>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-form">
@@ -129,7 +144,7 @@ function AddMaterialModal({ onClose, onSaved, userId }: AddMaterialModalProps) {
           <div className="modal-actions">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={isPending}>
-              {isPending ? "Saving…" : "Add Material"}
+              {isPending ? "Saving…" : isEdit ? "Save Changes" : "Add Material"}
             </button>
           </div>
         </form>
@@ -145,6 +160,7 @@ export default function MaterialsPage() {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("all");
@@ -292,14 +308,23 @@ export default function MaterialsPage() {
                         </td>
                         <td>
                           {!m.is_system && (
-                            <button
-                              className="icon-btn danger"
-                              onClick={() => handleDelete(m.id)}
-                              disabled={deletingId === m.id}
-                              title="Delete material"
-                            >
-                              🗑
-                            </button>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button
+                                className="icon-btn"
+                                onClick={() => setEditingMaterial(m)}
+                                title="Edit material"
+                              >
+                                🖊
+                              </button>
+                              <button
+                                className="icon-btn danger"
+                                onClick={() => handleDelete(m.id)}
+                                disabled={deletingId === m.id}
+                                title="Delete material"
+                              >
+                                🗑
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -318,11 +343,12 @@ export default function MaterialsPage() {
         </div>
       )}
 
-      {showModal && userId && (
+      {(showModal || editingMaterial) && userId && (
         <AddMaterialModal
           userId={userId}
-          onClose={() => setShowModal(false)}
-          onSaved={() => { setShowModal(false); load(); }}
+          initialValues={editingMaterial ?? undefined}
+          onClose={() => { setShowModal(false); setEditingMaterial(null); }}
+          onSaved={() => { setShowModal(false); setEditingMaterial(null); load(); }}
         />
       )}
     </div>

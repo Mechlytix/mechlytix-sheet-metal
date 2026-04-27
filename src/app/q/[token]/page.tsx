@@ -36,7 +36,7 @@ export default async function QuoteSharePage({ params }: Props) {
   const { data: quote, error } = await supabase
     .from("quotes")
     .select(`
-      id, filename, input_type, status,
+      id, filename, input_type, status, user_id,
       bounding_width_mm, bounding_height_mm, thickness_mm,
       perimeter_mm, pierce_count, bend_count, part_area_mm2,
       quantity, unit_price, total_price, markup_percent,
@@ -49,6 +49,24 @@ export default async function QuoteSharePage({ params }: Props) {
     .single();
 
   if (error || !quote) notFound();
+
+  // Load the shop's branding profile
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const shopUserId = (quote as any).user_id as string | null;
+  const { data: shopProfile } = shopUserId
+    ? await supabase
+        .from("profiles")
+        .select("company, logo_url, phone, website, address_line1, address_line2")
+        .eq("id", shopUserId)
+        .single()
+    : { data: null };
+
+  const shopName    = shopProfile?.company ?? "Mechlytix";
+  const shopLogoUrl = shopProfile?.logo_url;
+  const shopPhone   = shopProfile?.phone;
+  const shopWebsite = shopProfile?.website;
+  const shopAddr1   = shopProfile?.address_line1;
+  const shopAddr2   = shopProfile?.address_line2;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mat  = (quote as any).materials  as { name: string; grade: string | null; category: string; color_hex: string | null } | null;
@@ -243,13 +261,34 @@ export default async function QuoteSharePage({ params }: Props) {
 
       {/* Brand header */}
       <div className="qs-header">
-        <svg width="22" height="22" viewBox="0 0 40 40" fill="none">
-          <polygon points="20,2 38,11 38,29 20,38 2,29 2,11" fill="none" stroke="#ff6600" strokeWidth="3"/>
-          <polygon points="20,10 30,15 30,25 20,30 10,25 10,15" fill="none" stroke="#ff8533" strokeWidth="2"/>
-          <polygon points="20,18 25,20.5 25,25.5 20,28 15,25.5 15,20.5" fill="#ff6600"/>
-        </svg>
-        <span className="qs-brand-name">Mechlytix</span>
-        <span className="qs-brand-tag">Sheet Metal Quotation</span>
+        {shopLogoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={shopLogoUrl} alt={shopName} style={{ height: 32, width: "auto", objectFit: "contain" }} />
+        ) : (
+          <svg width="22" height="22" viewBox="0 0 40 40" fill="none">
+            <polygon points="20,2 38,11 38,29 20,38 2,29 2,11" fill="none" stroke="#ff6600" strokeWidth="3"/>
+            <polygon points="20,10 30,15 30,25 20,30 10,25 10,15" fill="none" stroke="#ff8533" strokeWidth="2"/>
+            <polygon points="20,18 25,20.5 25,25.5 20,28 15,25.5 15,20.5" fill="#ff6600"/>
+          </svg>
+        )}
+        <div style={{ flex: 1 }}>
+          <span className="qs-brand-name">{shopName}</span>
+          {(shopAddr1 || shopAddr2) && (
+            <span className="qs-brand-tag" style={{ display: "block", marginTop: 1 }}>
+              {[shopAddr1, shopAddr2].filter(Boolean).join(", ")}
+            </span>
+          )}
+        </div>
+        {(shopPhone || shopWebsite) && (
+          <div style={{ textAlign: "right", fontSize: 12, color: "#666" }}>
+            {shopPhone && <div>{shopPhone}</div>}
+            {shopWebsite && (
+              <a href={shopWebsite} target="_blank" rel="noopener noreferrer"
+                style={{ color: "#ff6600", textDecoration: "none" }}
+              >{shopWebsite.replace(/^https?:\/\//, "")}</a>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="qs-page">
@@ -326,6 +365,14 @@ export default async function QuoteSharePage({ params }: Props) {
             {quote.customer_email ? (
               <a href={`mailto:${quote.customer_email}`} className="qs-cta-btn">
                 Contact Us
+              </a>
+            ) : shopPhone ? (
+              <a href={`tel:${shopPhone}`} className="qs-cta-btn">
+                Call {shopPhone}
+              </a>
+            ) : shopWebsite ? (
+              <a href={shopWebsite} target="_blank" rel="noopener noreferrer" className="qs-cta-btn">
+                Visit {shopName}
               </a>
             ) : (
               <a href="https://mechlytix.com/contact" target="_blank" rel="noopener noreferrer" className="qs-cta-btn">
