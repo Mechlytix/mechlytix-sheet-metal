@@ -8,7 +8,8 @@ import type { PricingGeometry, DXFLayer, DXFPath } from "@/lib/pricing/types";
 
 // dxf-parser ships its own JS, use dynamic require
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const DxfParser = require("dxf-parser");
+const DxfParserRaw = require("dxf-parser");
+const DxfParser = DxfParserRaw.default || DxfParserRaw;
 
 interface Vertex { x: number; y: number; bulge?: number }
 
@@ -48,13 +49,16 @@ interface ParsedEntity {
 }
 
 export function parseDXFGeometry(fileContent: string): PricingGeometry {
+  if (typeof DxfParser !== "function") {
+    throw new Error(`DxfParser module resolution failed. Type: ${typeof DxfParser}, Raw: ${typeof DxfParserRaw}`);
+  }
   const parser = new DxfParser();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let dxf: any;
   try {
     dxf = parser.parseSync(fileContent);
-  } catch {
-    throw new Error("Could not parse DXF file — ensure it is a valid R12-R2018 DXF.");
+  } catch (e) {
+    throw new Error(`Could not parse DXF file — ensure it is a valid R12-R2018 DXF. Inner error: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   const entities: any[] = dxf?.entities ?? [];
