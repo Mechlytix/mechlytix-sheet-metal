@@ -324,9 +324,18 @@ export default function QuoterPage() {
     if (!mat || !mach) return;
 
     const geo  = effectiveGeometry;
-    const thickMm = geo.thicknessConfidence === "detected"
-      ? geo.thickness
-      : parseFloat(thicknessInput) || 2;
+    let thickMm: number;
+    if (geo.thicknessConfidence === "detected") {
+      thickMm = geo.thickness;
+    } else {
+      const parsed = parseFloat(thicknessInput);
+      if (isNaN(parsed) || parsed <= 0) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setResult(null);
+        return;
+      }
+      thickMm = parsed;
+    }
 
     const feedRate = getFeedRateWithCustom(mach.feed_rates, mat.category, thickMm, mach.power_kw ?? 4);
 
@@ -732,8 +741,10 @@ export default function QuoterPage() {
           )}
 
           {(phase.name === "ready" || phase.name === "saving") && !result && (
-            <div className="quoter-placeholder mt-4">
-              <p>Select a material and thickness to calculate price</p>
+            <div className="quoter-placeholder mt-4 flex flex-col items-center justify-center p-8 bg-gray-900 border border-gray-800 border-dashed rounded-lg text-center text-gray-400">
+              <div className="text-3xl mb-3">☝️</div>
+              <p className="font-medium text-gray-300 mb-1">Missing Parameters</p>
+              <p className="text-sm">Please select a material, machine, and specify the material thickness to instantly calculate your price.</p>
             </div>
           )}
         </div>
