@@ -61,6 +61,7 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
     throw new Error(`Could not parse DXF file — ensure it is a valid R12-R2018 DXF. Inner error: ${e instanceof Error ? e.message : String(e)}`);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const entities: any[] = dxf?.entities ?? [];
   const layersMap = new Map<string, DXFLayer>();
 
@@ -111,7 +112,7 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
       }
       case "ARC": {
         const { center, radius, startAngle, endAngle } = entity;
-        if (!center || !radius) break;
+        if (!center || typeof radius !== "number" || typeof startAngle !== "number" || typeof endAngle !== "number") break;
         let sweep = endAngle - startAngle;
         if (sweep <= 0) sweep += 360;
         len = (Math.PI / 180) * sweep * radius;
@@ -133,7 +134,7 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
       }
       case "CIRCLE": {
         const { center, radius } = entity;
-        if (!center || !radius) break;
+        if (!center || typeof radius !== "number") break;
         len = 2 * Math.PI * radius;
         isClosed = true;
         svgPath = `M ${center.x - radius} ${center.y} a ${radius} ${radius} 0 1 0 ${radius * 2} 0 a ${radius} ${radius} 0 1 0 ${-radius * 2} 0`;
@@ -185,7 +186,7 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
       }
     }
 
-    if (len > 0) {
+    if (len > 0 && !isNaN(len)) {
       layer.entityCount++;
       parsedEntities.push({
         id: idx,

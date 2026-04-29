@@ -88,7 +88,9 @@ export function DxfViewer({ geometry, activeLayers }: DxfViewerProps) {
       const svgPointerY = vb.y + (rect.height - pointerY) * ratio;
 
       // Zoom factor
-      const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
+      // Using Math.exp provides smooth continuous zooming, making trackpads less sensitive
+      // and standard mouse wheels still effective.
+      const zoomFactor = Math.exp(e.deltaY * 0.002);
       
       setVb(prev => {
         const newW = prev.w * zoomFactor;
@@ -144,7 +146,13 @@ export function DxfViewer({ geometry, activeLayers }: DxfViewerProps) {
         >
           {dxfData.paths.map((path) => {
             const isActive = activeLayers.includes(path.layer);
-            const strokeColor = isActive ? "#f97316" : "#3d404f";
+            const isBend = path.layer.toLowerCase().includes("bend");
+            
+            let strokeColor = "#3d404f"; // dimmed
+            if (isActive) {
+              strokeColor = isBend ? "#3b82f6" : "#f97316"; // blue for bends, orange for cuts
+            }
+            
             const opacity = isActive ? 1.0 : 0.2;
 
             return (
