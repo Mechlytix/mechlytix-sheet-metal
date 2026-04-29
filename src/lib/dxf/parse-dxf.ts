@@ -4,7 +4,7 @@
 // Handles: LINE, ARC, CIRCLE, LWPOLYLINE, POLYLINE
 // ─────────────────────────────────────────────────────────
 
-import type { PricingGeometry } from "@/lib/pricing/types";
+import type { PricingGeometry, DXFLayer, DXFPath } from "@/lib/pricing/types";
 
 // dxf-parser ships its own JS, use dynamic require
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -18,7 +18,6 @@ function lineLength(v0: Vertex, v1: Vertex): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-/** Length of a polyline segment accounting for bulge (arc) */
 function segmentLength(v0: Vertex, v1: Vertex): number {
   const chord = lineLength(v0, v1);
   const bulge = v0.bulge ?? 0;
@@ -29,16 +28,23 @@ function segmentLength(v0: Vertex, v1: Vertex): number {
   return Math.abs(radius * angle);
 }
 
-/** Shoelace formula for signed area of a polygon */
-function polygonArea(verts: Vertex[]): number {
-  let area = 0;
-  const n = verts.length;
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    area += verts[i].x * verts[j].y;
-    area -= verts[j].x * verts[i].y;
-  }
-  return Math.abs(area) / 2;
+// Convert AutoCAD color index to Hex.
+const ACI_TO_HEX: Record<number, string> = {
+  1: "#ff0000", 2: "#ffff00", 3: "#00ff00", 4: "#00ffff",
+  5: "#0000ff", 6: "#ff00ff", 7: "#000000", 8: "#808080", 9: "#c0c0c0"
+};
+function getColor(colorIndex?: number): string {
+  return ACI_TO_HEX[colorIndex ?? 7] ?? "#333333";
+}
+
+interface ParsedEntity {
+  id: number;
+  layer: string;
+  len: number;
+  svgPath: string;
+  start?: Vertex;
+  end?: Vertex;
+  isClosed: boolean;
 }
 
 export function parseDXFGeometry(fileContent: string): PricingGeometry {
@@ -51,13 +57,20 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
     throw new Error("Could not parse DXF file — ensure it is a valid R12-R2018 DXF.");
   }
 
-  const entities: any[] = dxf?.entities ?? []; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const entities: any[] = dxf?.entities ?? [];
+  const layersMap = new Map<string, DXFLayer>();
+
+  if (dxf.tables?.layer?.layers) {
+    for (const [name, layerDef] of Object.entries(dxf.tables.layer.layers as Record<string, { colorNumber?: number }>)) {
+      layersMap.set(name, {
+        name,
+        color: getColor(layerDef.colorNumber),
+        entityCount: 0,
+      });
+    }
+  }
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  let totalPerimeter = 0;
-  let closedLoopCount = 0;
-  const closedLoopAreas: number[] = [];
-
   function updateBB(x: number, y: number) {
     if (x < minX) minX = x;
     if (x > maxX) maxX = x;
@@ -65,95 +78,216 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
     if (y > maxY) maxY = y;
   }
 
-  for (const entity of entities) {
+  const parsedEntities: ParsedEntity[] = [];
+
+  for (let idx = 0; idx < entities.length; idx++) {
+    const entity = entities[idx];
+    const layerName = entity.layer || "0";
+    if (!layersMap.has(layerName)) {
+      layersMap.set(layerName, { name: layerName, color: "#333333", entityCount: 0 });
+    }
+    const layer = layersMap.get(layerName)!;
+
+    let svgPath = "";
+    let len = 0;
+    let isClosed = false;
+    let start: Vertex | undefined;
+    let end: Vertex | undefined;
+
     switch (entity.type) {
       case "LINE": {
         const v0 = entity.vertices?.[0] ?? { x: entity.start?.x ?? 0, y: entity.start?.y ?? 0 };
         const v1 = entity.vertices?.[1] ?? { x: entity.end?.x ?? 0, y: entity.end?.y ?? 0 };
-        totalPerimeter += lineLength(v0, v1);
+        len = lineLength(v0, v1);
         updateBB(v0.x, v0.y);
         updateBB(v1.x, v1.y);
+        svgPath = `M ${v0.x} ${v0.y} L ${v1.x} ${v1.y}`;
+        start = v0; end = v1;
         break;
       }
-
       case "ARC": {
         const { center, radius, startAngle, endAngle } = entity;
         if (!center || !radius) break;
         let sweep = endAngle - startAngle;
         if (sweep <= 0) sweep += 360;
-        totalPerimeter += (Math.PI / 180) * sweep * radius;
+        len = (Math.PI / 180) * sweep * radius;
+
+        const startRad = startAngle * Math.PI / 180;
+        const endRad = endAngle * Math.PI / 180;
+        const startX = center.x + radius * Math.cos(startRad);
+        const startY = center.y + radius * Math.sin(startRad);
+        const endX = center.x + radius * Math.cos(endRad);
+        const endY = center.y + radius * Math.sin(endRad);
+        const largeArcFlag = sweep > 180 ? 1 : 0;
+        svgPath = `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${endX} ${endY}`;
+        
         updateBB(center.x - radius, center.y - radius);
         updateBB(center.x + radius, center.y + radius);
+        start = { x: startX, y: startY };
+        end = { x: endX, y: endY };
         break;
       }
-
       case "CIRCLE": {
         const { center, radius } = entity;
         if (!center || !radius) break;
-        totalPerimeter += 2 * Math.PI * radius;
-        closedLoopCount++;
-        closedLoopAreas.push(Math.PI * radius * radius);
+        len = 2 * Math.PI * radius;
+        isClosed = true;
+        svgPath = `M ${center.x - radius} ${center.y} a ${radius} ${radius} 0 1 0 ${radius * 2} 0 a ${radius} ${radius} 0 1 0 ${-radius * 2} 0`;
         updateBB(center.x - radius, center.y - radius);
         updateBB(center.x + radius, center.y + radius);
         break;
       }
-
       case "LWPOLYLINE":
       case "POLYLINE": {
         const verts: Vertex[] = entity.vertices ?? [];
         if (verts.length < 2) break;
 
-        let len = 0;
+        svgPath = `M ${verts[0].x} ${verts[0].y}`;
         for (let i = 0; i < verts.length - 1; i++) {
           len += segmentLength(verts[i], verts[i + 1]);
           updateBB(verts[i].x, verts[i].y);
+          svgPath += ` L ${verts[i+1].x} ${verts[i+1].y}`;
         }
         updateBB(verts[verts.length - 1].x, verts[verts.length - 1].y);
 
-        const isClosed = entity.closed || entity.shape;
+        isClosed = entity.closed || entity.shape;
         if (isClosed) {
           len += segmentLength(verts[verts.length - 1], verts[0]);
-          closedLoopCount++;
-          closedLoopAreas.push(polygonArea(verts));
+          svgPath += ` Z`;
+        } else {
+          start = verts[0];
+          end = verts[verts.length - 1];
         }
-        totalPerimeter += len;
         break;
       }
-
       case "SPLINE": {
-        // Approximate: sum of control point distances
         const pts: Vertex[] = entity.controlPoints ?? entity.fitPoints ?? [];
+        if (pts.length < 2) break;
+        svgPath = `M ${pts[0].x} ${pts[0].y}`;
         for (let i = 0; i < pts.length - 1; i++) {
-          totalPerimeter += lineLength(pts[i], pts[i + 1]);
+          len += lineLength(pts[i], pts[i + 1]);
           updateBB(pts[i].x, pts[i].y);
+          svgPath += ` L ${pts[i+1].x} ${pts[i+1].y}`;
         }
-        if (pts.length > 0) updateBB(pts[pts.length - 1].x, pts[pts.length - 1].y);
+        updateBB(pts[pts.length - 1].x, pts[pts.length - 1].y);
+        isClosed = entity.closed;
+        if (isClosed) {
+          svgPath += ` Z`;
+        } else {
+          start = pts[0];
+          end = pts[pts.length - 1];
+        }
         break;
       }
     }
+
+    if (len > 0) {
+      layer.entityCount++;
+      parsedEntities.push({
+        id: idx,
+        layer: layerName,
+        len,
+        svgPath,
+        start,
+        end,
+        isClosed
+      });
+    }
   }
 
-  // Outer contour = the largest closed loop area
-  // Everything else is a pierce/hole
-  let partArea = 0;
-  let pierceCount = 0;
+  // Group entities into connected paths per layer
+  // A path is a collection of SVG strings that form a single cut
+  const finalPaths: DXFPath[] = [];
 
-  if (closedLoopAreas.length > 0) {
-    const maxArea = Math.max(...closedLoopAreas);
-    partArea = maxArea;
-    // Holes = all closed loops whose area is not the dominant outer contour
-    pierceCount = closedLoopAreas.filter(
-      (a) => a < maxArea * 0.9 // smaller than 90% of largest = inner loop
-    ).length;
+  // Group by layer first
+  const layerGroups = new Map<string, ParsedEntity[]>();
+  for (const pe of parsedEntities) {
+    if (!layerGroups.has(pe.layer)) layerGroups.set(pe.layer, []);
+    layerGroups.get(pe.layer)!.push(pe);
   }
+
+  const TOLERANCE = 0.01;
+
+  for (const [layerName, ents] of layerGroups.entries()) {
+    const unvisited = new Set(ents);
+
+    while (unvisited.size > 0) {
+      // Start a new connected path
+      const first = unvisited.values().next().value as ParsedEntity;
+      unvisited.delete(first);
+
+      let currentSvg = first.svgPath;
+      let currentLen = first.len;
+      let pathIsClosed = first.isClosed;
+
+      // If it's already closed, we don't need to connect it to anything
+      if (!pathIsClosed && first.start && first.end) {
+        let currentStart = { ...first.start };
+        let currentEnd = { ...first.end };
+        let added = true;
+
+        while (added) {
+          added = false;
+          for (const cand of unvisited) {
+            if (cand.isClosed) continue;
+            
+            // Check connections
+            const dSS = lineLength(currentStart, cand.start!);
+            const dSE = lineLength(currentStart, cand.end!);
+            const dES = lineLength(currentEnd, cand.start!);
+            const dEE = lineLength(currentEnd, cand.end!);
+
+            if (dES < TOLERANCE) {
+              currentSvg += ` ` + cand.svgPath;
+              currentEnd = cand.end!;
+            } else if (dEE < TOLERANCE) {
+              currentSvg += ` ` + cand.svgPath; // Not reversing perfectly for SVG string, but good enough for render visually
+              currentEnd = cand.start!;
+            } else if (dSS < TOLERANCE) {
+              currentSvg += ` ` + cand.svgPath;
+              currentStart = cand.end!;
+            } else if (dSE < TOLERANCE) {
+              currentSvg += ` ` + cand.svgPath;
+              currentStart = cand.start!;
+            } else {
+              continue; // no connection
+            }
+
+            // connected!
+            currentLen += cand.len;
+            unvisited.delete(cand);
+            added = true;
+
+            // Check if we closed the loop
+            if (lineLength(currentStart, currentEnd) < TOLERANCE) {
+              pathIsClosed = true;
+              currentSvg += ` Z`;
+            }
+            break; // restart loop with new endpoints
+          }
+          if (pathIsClosed) break;
+        }
+      }
+
+      finalPaths.push({
+        id: Math.random().toString(36).substring(7),
+        layer: layerName,
+        color: layersMap.get(layerName)!.color,
+        svgPath: currentSvg,
+        length: currentLen,
+        isClosed: pathIsClosed,
+      });
+    }
+  }
+
+  const layers = Array.from(layersMap.values()).filter(l => l.entityCount > 0);
 
   const width  = isFinite(maxX - minX) ? maxX - minX : 0;
   const height = isFinite(maxY - minY) ? maxY - minY : 0;
+  const partArea = width * height * 0.8;
 
-  // If we couldn't get area from closed loops, estimate from bounding box
-  if (partArea === 0 && width > 0 && height > 0) {
-    partArea = width * height * 0.8; // rough 80% nesting efficiency inverse
-  }
+  const totalPerimeter = finalPaths.reduce((sum, p) => sum + p.length, 0);
+  const pierceCount = finalPaths.length;
 
   return {
     inputType: "dxf",
@@ -162,9 +296,15 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
     partArea,
     perimeter: totalPerimeter,
     pierceCount,
-    bendCount: 0,       // DXF has no bend info
+    bendCount: 0,
     bendAngles: [],
-    thickness: 0,       // must be user-specified
+    thickness: 0,
     thicknessConfidence: "required",
+    dxfData: {
+      layers,
+      paths: finalPaths,
+      minX: isFinite(minX) ? minX : 0,
+      minY: isFinite(minY) ? minY : 0,
+    }
   };
 }

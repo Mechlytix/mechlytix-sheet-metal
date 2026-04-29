@@ -2,6 +2,28 @@
 // Pricing Engine — Shared Types
 // ─────────────────────────────────────────────────────────
 
+export interface DXFPath {
+  id: string;
+  layer: string;
+  color?: string;
+  svgPath: string;
+  length: number;
+  isClosed: boolean;
+}
+
+export interface DXFLayer {
+  name: string;
+  color: string;
+  entityCount: number;
+}
+
+export interface DXFData {
+  layers: DXFLayer[];
+  paths: DXFPath[];
+  minX: number;
+  minY: number;
+}
+
 /** Geometry extracted from a STEP or DXF file */
 export interface PricingGeometry {
   /** Source format */
@@ -23,6 +45,8 @@ export interface PricingGeometry {
   thickness: number;
   /** Whether thickness was detected automatically or requires user input */
   thicknessConfidence: "detected" | "required";
+  /** Optional detailed DXF geometry for rendering and layer toggling */
+  dxfData?: DXFData;
 }
 
 /** Pricing inputs provided by the user */

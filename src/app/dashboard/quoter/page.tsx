@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboard } from "@/lib/dashboard-context";
 import { parseDXFGeometry } from "@/lib/dxf/parse-dxf";
@@ -9,6 +9,7 @@ import { getFeedRateWithCustom } from "@/lib/pricing/feed-rates";
 import { formatCurrency, formatLength } from "@/lib/units";
 import type { PricingGeometry, PricingResult } from "@/lib/pricing/types";
 import type { Material, MachineProfile } from "@/lib/types/database";
+import { DxfViewer } from "@/components/DxfViewer";
 
 // ─────────────────────────────────────────────────────────
 // /dashboard/quoter — Unified STEP / DXF Instant Quoter
@@ -241,7 +242,6 @@ function QuoteBreakdown({
 export default function QuoterPage() {
   const { units } = useDashboard();
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
-  // Store geometry separately so TypeScript can always access it in config panel
   const [geometry, setGeometry] = useState<PricingGeometry | null>(null);
   const [savedFilename, setSavedFilename] = useState("");
 
@@ -253,9 +253,11 @@ export default function QuoterPage() {
   const [selectedMachineId, setSelectedMachineId]   = useState<string>("");
   const [quantity, setQuantity]     = useState(1);
   const [markup, setMarkup]         = useState(15);
-  const [expiryDays, setExpiryDays] = useState(30);
   const [thicknessInput, setThicknessInput] = useState(""); // DXF only
   const [usingRemnant, setUsingRemnant]     = useState(false); // no waste when using remnant
+
+  // DXF Layer state
+  const [activeLayers, setActiveLayers] = useState<string[]>([]);
 
   // Remnant check results
   const [remnantMatches, setRemnantMatches]   = useState<RemnantMatch[]>([]);
@@ -283,11 +285,9 @@ export default function QuoterPage() {
       // Apply saved defaults
       if (settings) {
         setMarkup(settings.default_markup_percent ?? 15);
-        setExpiryDays(settings.quote_expiry_days ?? 30);
       }
 
       if (mats && mats.length > 0) setSelectedMaterialId(mats[0].id);
-      // Prefer the default machine
       if (machs && machs.length > 0) {
         const def = machs.find((m) => m.is_default) ?? machs[0];
         setSelectedMachineId(def.id);
@@ -296,15 +296,34 @@ export default function QuoterPage() {
     load();
   }, []);
 
+  // Compute effective geometry (DXF layers affect perimeter and pierces)
+  const effectiveGeometry = useMemo(() => {
+    if (!geometry) return null;
+    if (geometry.inputType !== "dxf" || !geometry.dxfData) return geometry;
+
+    const activePaths = geometry.dxfData.paths.filter((p) => activeLayers.includes(p.layer));
+    const newPerimeter = activePaths.reduce((sum, p) => sum + p.length, 0);
+    const newPierceCount = activePaths.length;
+    
+    return {
+      ...geometry,
+      perimeter: newPerimeter,
+      pierceCount: newPierceCount,
+    };
+  }, [geometry, activeLayers]);
+
   // Re-compute price whenever inputs change
   useEffect(() => {
-    if (!geometry || (phase.name !== "ready" && phase.name !== "saving")) { setResult(null); return; }
+    if (!effectiveGeometry || (phase.name !== "ready" && phase.name !== "saving")) { 
+      setResult(null); 
+      return; 
+    }
 
     const mat  = materials.find((m) => m.id === selectedMaterialId);
     const mach = machines.find((m)  => m.id === selectedMachineId);
     if (!mat || !mach) return;
 
-    const geo  = geometry;
+    const geo  = effectiveGeometry;
     const thickMm = geo.thicknessConfidence === "detected"
       ? geo.thickness
       : parseFloat(thicknessInput) || 2;
@@ -323,20 +342,19 @@ export default function QuoterPage() {
       costPerBend:        mach.cost_per_bend ?? 2.5,
       quantity,
       markupPercent: markup,
-      // No nesting waste when cutting from an existing remnant
       wasteFactor: usingRemnant ? 1.0 : 1.15,
     });
     setResult(r);
-  }, [phase, geometry, selectedMaterialId, selectedMachineId, quantity, markup, thicknessInput, materials, machines, usingRemnant]);
+  }, [phase, effectiveGeometry, selectedMaterialId, selectedMachineId, quantity, markup, thicknessInput, materials, machines, usingRemnant]);
 
-  // Check scrap rack for remnants large enough to fit this flat pattern
+  // Check scrap rack for remnants
   useEffect(() => {
-    if (!geometry || !userId || phase.name !== "ready") {
+    if (!effectiveGeometry || !userId || phase.name !== "ready") {
       setRemnantMatches([]);
       setRemnantDismissed(false);
       return;
     }
-    const { boundingWidth, boundingHeight } = geometry;
+    const { boundingWidth, boundingHeight } = effectiveGeometry;
     if (!boundingWidth || !boundingHeight) return;
 
     const supabase = createClient();
@@ -353,7 +371,7 @@ export default function QuoterPage() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setRemnantMatches((data as any[]) ?? []);
       });
-  }, [geometry, userId, phase.name]);
+  }, [effectiveGeometry, userId, phase.name]);
 
 
   // Handle file drop
@@ -367,19 +385,22 @@ export default function QuoterPage() {
     setPhase({ name: "analyzing", filename: file.name });
 
     try {
-      let geometry: PricingGeometry;
+      let geo: PricingGeometry;
 
       if (ext === "dxf") {
         const text = await file.text();
-        geometry = parseDXFGeometry(text);
+        geo = parseDXFGeometry(text);
+        if (geo.dxfData) {
+          // By default, enable all layers
+          setActiveLayers(geo.dxfData.layers.map(l => l.name));
+        }
       } else {
-        // STEP — use OCCT worker
         const { getGeometryAPI } = await import("@/lib/worker/geometry-api");
         const api = getGeometryAPI();
         await api.initialize();
         const buffer = await file.arrayBuffer();
         const raw = await api.extractPricingGeometry(buffer);
-        geometry = {
+        geo = {
           inputType: "step",
           boundingWidth:  raw.boundingWidth,
           boundingHeight: raw.boundingHeight,
@@ -393,9 +414,9 @@ export default function QuoterPage() {
         };
       }
 
-      setGeometry(geometry);
+      setGeometry(geo);
       setSavedFilename(file.name);
-      setPhase({ name: "ready", geometry, filename: file.name });
+      setPhase({ name: "ready", geometry: geo, filename: file.name });
     } catch (err) {
       alert(`Error analysing file: ${err instanceof Error ? err.message : String(err)}`);
       setPhase({ name: "idle" });
@@ -404,11 +425,11 @@ export default function QuoterPage() {
 
   // Save quote to Supabase
   const handleSave = useCallback(async (customerName: string, notes: string) => {
-    if (phase.name !== "ready" || !result || !userId || !geometry) return;
+    if (phase.name !== "ready" || !result || !userId || !effectiveGeometry) return;
     setPhase({ name: "saving" });
 
     const supabase = createClient();
-    const geo = geometry;
+    const geo = effectiveGeometry;
     const { data, error } = await supabase.from("quotes").insert({
       user_id:            userId,
       filename:           phase.filename,
@@ -437,14 +458,23 @@ export default function QuoterPage() {
 
     if (error || !data) {
       alert("Failed to save quote: " + (error?.message ?? "unknown error"));
-      if (geometry) setPhase({ name: "ready", geometry, filename: savedFilename });
+      if (effectiveGeometry) setPhase({ name: "ready", geometry: effectiveGeometry, filename: savedFilename });
       return;
     }
     setPhase({ name: "saved", quoteId: data.id });
-  }, [phase, result, userId, geometry, savedFilename, selectedMaterialId, selectedMachineId, quantity, markup]);
+  }, [phase, result, userId, effectiveGeometry, savedFilename, selectedMaterialId, selectedMachineId, quantity, markup]);
 
   const selectedMat  = materials.find((m) => m.id === selectedMaterialId);
   const selectedMach = machines.find((m) => m.id === selectedMachineId);
+
+  // Toggle DXF Layer
+  const toggleLayer = (layerName: string) => {
+    setActiveLayers(prev => 
+      prev.includes(layerName)
+        ? prev.filter(l => l !== layerName)
+        : [...prev, layerName]
+    );
+  };
 
   // ── Render ────────────────────────────────────────────
 
@@ -497,13 +527,36 @@ export default function QuoterPage() {
             />
           )}
 
-          {phase.name === "ready" && geometry && (
-            <GeometryCard geo={geometry} units={units} />
+          {phase.name === "ready" && effectiveGeometry && (
+            <GeometryCard geo={effectiveGeometry} units={units} />
+          )}
+
+          {/* LAYER TOGGLE UI (only for DXF) */}
+          {(phase.name === "ready" || phase.name === "saving") && effectiveGeometry?.inputType === "dxf" && effectiveGeometry.dxfData && (
+            <div className="config-panel" style={{ marginTop: "1rem" }}>
+              <h3 className="config-title">DXF Layers (Strip Data)</h3>
+              <p className="text-xs text-gray-400 mb-3">Uncheck layers that shouldn&apos;t be cut (e.g., bends, text).</p>
+              <div className="flex flex-col gap-2">
+                {effectiveGeometry.dxfData.layers.map(layer => (
+                  <label key={layer.name} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-800 p-1.5 rounded transition-colors">
+                    <input 
+                      type="checkbox" 
+                      className="accent-[#f97316] w-4 h-4 cursor-pointer"
+                      checked={activeLayers.includes(layer.name)}
+                      onChange={() => toggleLayer(layer.name)}
+                    />
+                    <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: layer.color }}></div>
+                    <span className="truncate flex-1 text-gray-300">{layer.name}</span>
+                    <span className="text-gray-500 text-xs shrink-0">{layer.entityCount} entities</span>
+                  </label>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* ── Remnant Match Banner ── */}
           {phase.name === "ready" && remnantMatches.length > 0 && !remnantDismissed && (
-            <div className="remnant-banner">
+            <div className="remnant-banner" style={{ marginTop: "1rem" }}>
               <div className="rb-icon">♻️</div>
               <div className="rb-body">
                 <p className="rb-title">
@@ -548,8 +601,8 @@ export default function QuoterPage() {
           )}
 
           {/* Config panel */}
-          {geometry && (phase.name === "ready" || phase.name === "saving") && (
-            <div className="config-panel">
+          {effectiveGeometry && (phase.name === "ready" || phase.name === "saving") && (
+            <div className="config-panel" style={{ marginTop: "1rem" }}>
               <h3 className="config-title">Quote Parameters</h3>
 
               {/* Material */}
@@ -573,7 +626,7 @@ export default function QuoterPage() {
               </div>
 
               {/* Thickness — only required for DXF */}
-              {geometry.thicknessConfidence === "required" && (
+              {effectiveGeometry.thicknessConfidence === "required" && (
                 <div className="form-field">
                   <label>Thickness (mm) *</label>
                   <input
@@ -605,7 +658,7 @@ export default function QuoterPage() {
                     Feed rate: {getFeedRateWithCustom(
                       selectedMach.feed_rates,
                       selectedMat.category,
-                      geometry.thicknessConfidence === "detected" ? geometry.thickness : (parseFloat(thicknessInput) || 2),
+                      effectiveGeometry.thicknessConfidence === "detected" ? effectiveGeometry.thickness : (parseFloat(thicknessInput) || 2),
                       selectedMach.power_kw ?? 4
                     ).toLocaleString()} mm/min
                   </span>
@@ -641,7 +694,7 @@ export default function QuoterPage() {
         </div>
 
         {/* ── Right column: price card ── */}
-        <div className="quoter-right">
+        <div className="quoter-right flex flex-col gap-4">
           {phase.name === "idle" && (
             <div className="quoter-placeholder">
               <div className="qp-icon">⚡</div>
@@ -662,6 +715,13 @@ export default function QuoterPage() {
             </div>
           )}
 
+          {/* DXF Viewer on top of the right column */}
+          {(phase.name === "ready" || phase.name === "saving") && effectiveGeometry?.inputType === "dxf" && (
+            <div className="w-full h-80 shrink-0">
+              <DxfViewer geometry={effectiveGeometry} activeLayers={activeLayers} />
+            </div>
+          )}
+
           {(phase.name === "ready" || phase.name === "saving") && result && (
             <QuoteBreakdown
               result={result}
@@ -672,7 +732,7 @@ export default function QuoterPage() {
           )}
 
           {(phase.name === "ready" || phase.name === "saving") && !result && (
-            <div className="quoter-placeholder">
+            <div className="quoter-placeholder mt-4">
               <p>Select a material and thickness to calculate price</p>
             </div>
           )}
