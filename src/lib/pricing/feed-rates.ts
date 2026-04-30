@@ -83,20 +83,29 @@ function interpolateFromTable(
   thicknessMm: number,
   powerScale: number
 ): number {
-  const thicknesses = Object.keys(table).map(Number).sort((a, b) => a - b);
+  // Convert table keys to a uniform numeric map to avoid string "1.0" vs "1" mismatch
+  const numTable = new Map<number, number>();
+  for (const [k, v] of Object.entries(table)) {
+    numTable.set(Number(k), Number(v));
+  }
+
+  const thicknesses = Array.from(numTable.keys()).sort((a, b) => a - b);
+
+  if (thicknesses.length === 0) return scaleFeedRate(3000, powerScale);
 
   // Exact match
-  const exact = table[thicknessMm.toString()];
-  if (exact !== undefined) return scaleFeedRate(exact, powerScale);
+  if (numTable.has(thicknessMm)) {
+    return scaleFeedRate(numTable.get(thicknessMm)!, powerScale);
+  }
 
   // Below range — clamp to minimum
   if (thicknessMm <= thicknesses[0]) {
-    return scaleFeedRate(table[thicknesses[0].toString()], powerScale);
+    return scaleFeedRate(numTable.get(thicknesses[0])!, powerScale);
   }
 
   // Above range — clamp to maximum
   if (thicknessMm >= thicknesses[thicknesses.length - 1]) {
-    return scaleFeedRate(table[thicknesses[thicknesses.length - 1].toString()], powerScale);
+    return scaleFeedRate(numTable.get(thicknesses[thicknesses.length - 1])!, powerScale);
   }
 
   // Linear interpolation between bracketing values
@@ -105,8 +114,8 @@ function interpolateFromTable(
     const hi = thicknesses[i + 1];
     if (thicknessMm >= lo && thicknessMm <= hi) {
       const t = (thicknessMm - lo) / (hi - lo);
-      const rateLo = table[lo.toString()];
-      const rateHi = table[hi.toString()];
+      const rateLo = numTable.get(lo)!;
+      const rateHi = numTable.get(hi)!;
       return scaleFeedRate(rateLo + t * (rateHi - rateLo), powerScale);
     }
   }
