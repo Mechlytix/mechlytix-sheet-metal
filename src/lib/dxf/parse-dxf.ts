@@ -38,6 +38,19 @@ function getColor(colorIndex?: number): string {
   return ACI_TO_HEX[colorIndex ?? 7] ?? "#333333";
 }
 
+function getAngle(v1: Vertex, v2: Vertex): number {
+  let angle = Math.atan2(v2.y - v1.y, v2.x - v1.x);
+  if (angle < 0) angle += Math.PI * 2;
+  return angle;
+}
+
+function angleDiff(a1: number, a2: number): number {
+  let diff = Math.abs(a1 - a2);
+  if (diff > Math.PI) diff = Math.PI * 2 - diff;
+  if (Math.abs(diff - Math.PI) < 0.05) return Math.abs(diff - Math.PI);
+  return diff;
+}
+
 interface ParsedEntity {
   id: number;
   layer: string;
@@ -71,6 +84,7 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
         name,
         color: getColor(layerDef.colorNumber),
         entityCount: 0,
+        intent: name.toLowerCase().includes("bend") ? "bend" : "cut",
       });
     }
   }
@@ -89,7 +103,12 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
     const entity = entities[idx];
     const layerName = entity.layer || "0";
     if (!layersMap.has(layerName)) {
-      layersMap.set(layerName, { name: layerName, color: "#333333", entityCount: 0 });
+      layersMap.set(layerName, { 
+        name: layerName, 
+        color: "#333333", 
+        entityCount: 0,
+        intent: layerName.toLowerCase().includes("bend") ? "bend" : "cut",
+      });
     }
     const layer = layersMap.get(layerName)!;
 
@@ -201,10 +220,7 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
   }
 
   // Group entities into connected paths per layer
-  // A path is a collection of SVG strings that form a single cut
   const finalPaths: DXFPath[] = [];
-
-  // Group by layer first
   const layerGroups = new Map<string, ParsedEntity[]>();
   for (const pe of parsedEntities) {
     if (!layerGroups.has(pe.layer)) layerGroups.set(pe.layer, []);
@@ -212,12 +228,13 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
   }
 
   const TOLERANCE = 0.01;
+  const DASH_GAP = 10.0; // 10mm max gap for dashed lines
 
   for (const [layerName, ents] of layerGroups.entries()) {
     const unvisited = new Set(ents);
+    const layerIntent = layersMap.get(layerName)!.intent;
 
     while (unvisited.size > 0) {
-      // Start a new connected path
       const first = unvisited.values().next().value as ParsedEntity;
       unvisited.delete(first);
 
@@ -225,7 +242,6 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
       let currentLen = first.len;
       let pathIsClosed = first.isClosed;
 
-      // If it's already closed, we don't need to connect it to anything
       if (!pathIsClosed && first.start && first.end) {
         let currentStart = { ...first.start };
         let currentEnd = { ...first.end };
@@ -236,39 +252,65 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
           for (const cand of unvisited) {
             if (cand.isClosed) continue;
             
-            // Check connections
             const dSS = lineLength(currentStart, cand.start!);
             const dSE = lineLength(currentStart, cand.end!);
             const dES = lineLength(currentEnd, cand.start!);
             const dEE = lineLength(currentEnd, cand.end!);
 
+            let connected = false;
+
             if (dES < TOLERANCE) {
               currentSvg += ` ` + cand.svgPath;
               currentEnd = cand.end!;
+              connected = true;
             } else if (dEE < TOLERANCE) {
-              currentSvg += ` ` + cand.svgPath; // Not reversing perfectly for SVG string, but good enough for render visually
+              currentSvg += ` ` + cand.svgPath; 
               currentEnd = cand.start!;
+              connected = true;
             } else if (dSS < TOLERANCE) {
               currentSvg += ` ` + cand.svgPath;
               currentStart = cand.end!;
+              connected = true;
             } else if (dSE < TOLERANCE) {
               currentSvg += ` ` + cand.svgPath;
               currentStart = cand.start!;
+              connected = true;
             } else {
-              continue; // no connection
+              // Collinear dash detection
+              if (currentSvg.includes("L") && cand.svgPath.includes("L")) {
+                const angCand = getAngle(cand.start!, cand.end!);
+                
+                if (dES < DASH_GAP && angleDiff(angCand, getAngle(currentEnd, cand.start!)) < 0.05) {
+                  currentSvg += ` ` + cand.svgPath;
+                  currentEnd = cand.end!;
+                  connected = true;
+                } else if (dEE < DASH_GAP && angleDiff(getAngle(cand.end!, cand.start!), getAngle(currentEnd, cand.end!)) < 0.05) {
+                  currentSvg += ` ` + cand.svgPath;
+                  currentEnd = cand.start!;
+                  connected = true;
+                } else if (dSS < DASH_GAP && angleDiff(angCand, getAngle(cand.start!, currentStart)) < 0.05) {
+                  currentSvg = cand.svgPath + ` ` + currentSvg;
+                  currentStart = cand.end!;
+                  connected = true;
+                } else if (dSE < DASH_GAP && angleDiff(getAngle(cand.end!, cand.start!), getAngle(cand.end!, currentStart)) < 0.05) {
+                  currentSvg = cand.svgPath + ` ` + currentSvg;
+                  currentStart = cand.start!;
+                  connected = true;
+                }
+              }
             }
 
-            // connected!
+            if (!connected) continue;
+
             currentLen += cand.len;
             unvisited.delete(cand);
             added = true;
 
-            // Check if we closed the loop
             if (lineLength(currentStart, currentEnd) < TOLERANCE) {
               pathIsClosed = true;
               currentSvg += ` Z`;
             }
-            break; // restart loop with new endpoints
+            break;
           }
           if (pathIsClosed) break;
         }
@@ -281,6 +323,7 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
         svgPath: currentSvg,
         length: currentLen,
         isClosed: pathIsClosed,
+        intent: layerIntent,
       });
     }
   }
@@ -291,16 +334,14 @@ export function parseDXFGeometry(fileContent: string): PricingGeometry {
   const height = isFinite(maxY - minY) ? maxY - minY : 0;
   const partArea = width * height * 0.8;
 
-  const totalPerimeter = finalPaths.reduce((sum, p) => sum + p.length, 0);
-  const pierceCount = finalPaths.length;
-
+  // Perimeter and pierceCount will be calculated dynamically by the UI based on intent
   return {
     inputType: "dxf",
     boundingWidth:  width,
     boundingHeight: height,
     partArea,
-    perimeter: totalPerimeter,
-    pierceCount,
+    perimeter: 0,
+    pierceCount: 0,
     bendCount: 0,
     bendAngles: [],
     thickness: 0,

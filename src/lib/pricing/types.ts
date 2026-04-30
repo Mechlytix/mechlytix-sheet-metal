@@ -2,6 +2,8 @@
 // Pricing Engine — Shared Types
 // ─────────────────────────────────────────────────────────
 
+export type DXFIntent = "cut" | "bend" | "ignore";
+
 export interface DXFPath {
   id: string;
   layer: string;
@@ -9,12 +11,14 @@ export interface DXFPath {
   svgPath: string;
   length: number;
   isClosed: boolean;
+  intent?: DXFIntent;
 }
 
 export interface DXFLayer {
   name: string;
   color: string;
   entityCount: number;
+  intent?: DXFIntent;
 }
 
 export interface DXFData {

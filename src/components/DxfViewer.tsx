@@ -1,14 +1,16 @@
 "use client";
 
 import React, { useMemo, useState, useRef, useEffect } from "react";
-import type { PricingGeometry } from "@/lib/pricing/types";
+import type { PricingGeometry, DXFIntent } from "@/lib/pricing/types";
 
 interface DxfViewerProps {
   geometry: PricingGeometry;
-  activeLayers: string[];
+  layerIntents: Record<string, DXFIntent>;
+  pathIntents: Record<string, DXFIntent>;
+  onPathClick: (pathId: string, currentIntent: DXFIntent) => void;
 }
 
-export function DxfViewer({ geometry, activeLayers }: DxfViewerProps) {
+export function DxfViewer({ geometry, layerIntents, pathIntents, onPathClick }: DxfViewerProps) {
   const { dxfData, boundingWidth, boundingHeight } = geometry;
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,12 +40,14 @@ export function DxfViewer({ geometry, activeLayers }: DxfViewerProps) {
 
   // Interaction state
   const [isDragging, setIsDragging] = useState(false);
+  const [dragMoved, setDragMoved] = useState(false);
   const [lastPt, setLastPt] = useState({ x: 0, y: 0 });
 
   // Handle Pan
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     setIsDragging(true);
+    setDragMoved(false);
     setLastPt({ x: e.clientX, y: e.clientY });
   };
 
@@ -51,10 +55,11 @@ export function DxfViewer({ geometry, activeLayers }: DxfViewerProps) {
     if (!isDragging || !svgRef.current) return;
     const dx = e.clientX - lastPt.x;
     const dy = e.clientY - lastPt.y;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) setDragMoved(true);
+    
     setLastPt({ x: e.clientX, y: e.clientY });
 
     const rect = svgRef.current.getBoundingClientRect();
-    // Assuming aspect ratio is preserved (xMidYMid meet), use the max dimension ratio
     const ratio = Math.max(vb.w / rect.width, vb.h / rect.height);
 
     setVb(prev => ({
@@ -88,14 +93,11 @@ export function DxfViewer({ geometry, activeLayers }: DxfViewerProps) {
       const svgPointerY = vb.y + (rect.height - pointerY) * ratio;
 
       // Zoom factor
-      // Using Math.exp provides smooth continuous zooming, making trackpads less sensitive
-      // and standard mouse wheels still effective.
       const zoomFactor = Math.exp(e.deltaY * 0.002);
       
       setVb(prev => {
         const newW = prev.w * zoomFactor;
         const newH = prev.h * zoomFactor;
-        // Adjust x and y so the pointer remains at the same coordinate
         const newX = svgPointerX - (pointerX * (newW / rect.width));
         const newY = svgPointerY - ((rect.height - pointerY) * (newH / rect.height));
 
@@ -131,8 +133,6 @@ export function DxfViewer({ geometry, activeLayers }: DxfViewerProps) {
       className="w-full h-full relative overflow-hidden bg-[#1a1c23] rounded-lg border border-[#2d303a] shadow-inner flex flex-col group"
     >
       <div className="flex-1 relative min-h-[300px]">
-        {/* Transparent background rect to catch pointer events if we used <g>, 
-            but adding pointer-events to SVG works too. */}
         <svg
           ref={svgRef}
           viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
@@ -145,15 +145,13 @@ export function DxfViewer({ geometry, activeLayers }: DxfViewerProps) {
           onPointerCancel={handlePointerUp}
         >
           {dxfData.paths.map((path) => {
-            const isActive = activeLayers.includes(path.layer);
-            const isBend = path.layer.toLowerCase().includes("bend");
+            const currentIntent = pathIntents[path.id] || layerIntents[path.layer] || "cut";
             
-            let strokeColor = "#3d404f"; // dimmed
-            if (isActive) {
-              strokeColor = isBend ? "#3b82f6" : "#f97316"; // blue for bends, orange for cuts
-            }
+            let strokeColor = "#3d404f"; // ignore
+            if (currentIntent === "cut") strokeColor = "#f97316"; // orange
+            if (currentIntent === "bend") strokeColor = "#3b82f6"; // blue
             
-            const opacity = isActive ? 1.0 : 0.2;
+            const opacity = currentIntent === "ignore" ? 0.2 : 1.0;
 
             return (
               <path
@@ -161,11 +159,18 @@ export function DxfViewer({ geometry, activeLayers }: DxfViewerProps) {
                 d={path.svgPath}
                 fill="none"
                 stroke={strokeColor}
-                strokeWidth={strokeWidth}
+                strokeWidth={strokeWidth * (currentIntent === "ignore" ? 0.5 : 1.5)} // make cut/bends thicker
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 opacity={opacity}
                 className="transition-colors duration-300 hover:stroke-white hover:opacity-100"
+                style={{ cursor: "pointer" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!dragMoved) {
+                    onPathClick(path.id, currentIntent);
+                  }
+                }}
               />
             );
           })}

@@ -7,7 +7,7 @@ import { parseDXFGeometry } from "@/lib/dxf/parse-dxf";
 import { calculatePrice } from "@/lib/pricing/cost-model";
 import { getFeedRateWithCustom } from "@/lib/pricing/feed-rates";
 import { formatCurrency, formatLength } from "@/lib/units";
-import type { PricingGeometry, PricingResult } from "@/lib/pricing/types";
+import type { PricingGeometry, PricingResult, DXFIntent } from "@/lib/pricing/types";
 import type { Material, MachineProfile } from "@/lib/types/database";
 import { DxfViewer } from "@/components/DxfViewer";
 
@@ -256,8 +256,10 @@ export default function QuoterPage() {
   const [thicknessInput, setThicknessInput] = useState(""); // DXF only
   const [usingRemnant, setUsingRemnant]     = useState(false); // no waste when using remnant
 
-  // DXF Layer state
-  const [activeLayers, setActiveLayers] = useState<string[]>([]);
+  // DXF state
+  const [layerIntents, setLayerIntents] = useState<Record<string, DXFIntent>>({});
+  const [pathIntents, setPathIntents] = useState<Record<string, DXFIntent>>({});
+  const [manualBendCount, setManualBendCount] = useState<number | null>(null);
 
   // Remnant check results
   const [remnantMatches, setRemnantMatches]   = useState<RemnantMatch[]>([]);
@@ -301,16 +303,27 @@ export default function QuoterPage() {
     if (!geometry) return null;
     if (geometry.inputType !== "dxf" || !geometry.dxfData) return geometry;
 
-    const activePaths = geometry.dxfData.paths.filter((p) => activeLayers.includes(p.layer));
-    const newPerimeter = activePaths.reduce((sum, p) => sum + p.length, 0);
-    const newPierceCount = activePaths.length;
+    let newPerimeter = 0;
+    let newPierceCount = 0;
+    let autoBendCount = 0;
+
+    geometry.dxfData.paths.forEach(p => {
+      const intent = pathIntents[p.id] || layerIntents[p.layer] || "cut";
+      if (intent === "cut") {
+        newPerimeter += p.length;
+        newPierceCount++;
+      } else if (intent === "bend") {
+        autoBendCount++;
+      }
+    });
     
     return {
       ...geometry,
       perimeter: newPerimeter,
       pierceCount: newPierceCount,
+      bendCount: manualBendCount !== null ? manualBendCount : autoBendCount,
     };
-  }, [geometry, activeLayers]);
+  }, [geometry, layerIntents, pathIntents, manualBendCount]);
 
   // Re-compute price whenever inputs change
   useEffect(() => {
@@ -400,8 +413,11 @@ export default function QuoterPage() {
         const text = await file.text();
         geo = parseDXFGeometry(text);
         if (geo.dxfData) {
-          // By default, enable all layers
-          setActiveLayers(geo.dxfData.layers.map(l => l.name));
+          const initialIntents: Record<string, DXFIntent> = {};
+          geo.dxfData.layers.forEach(l => { initialIntents[l.name] = l.intent || "cut"; });
+          setLayerIntents(initialIntents);
+          setPathIntents({});
+          setManualBendCount(null);
         }
       } else {
         const { getGeometryAPI } = await import("@/lib/worker/geometry-api");
@@ -476,14 +492,7 @@ export default function QuoterPage() {
   const selectedMat  = materials.find((m) => m.id === selectedMaterialId);
   const selectedMach = machines.find((m) => m.id === selectedMachineId);
 
-  // Toggle DXF Layer
-  const toggleLayer = (layerName: string) => {
-    setActiveLayers(prev => 
-      prev.includes(layerName)
-        ? prev.filter(l => l !== layerName)
-        : [...prev, layerName]
-    );
-  };
+
 
   // ── Render ────────────────────────────────────────────
 
@@ -543,22 +552,36 @@ export default function QuoterPage() {
           {/* LAYER TOGGLE UI (only for DXF) */}
           {(phase.name === "ready" || phase.name === "saving") && effectiveGeometry?.inputType === "dxf" && effectiveGeometry.dxfData && (
             <div className="config-panel" style={{ marginTop: "1rem" }}>
-              <h3 className="config-title">DXF Layers (Strip Data)</h3>
-              <p className="text-xs text-gray-400 mb-3">Uncheck layers that shouldn&apos;t be cut (e.g., bends, text).</p>
-              <div className="flex flex-col gap-2">
-                {effectiveGeometry.dxfData.layers.map(layer => (
-                  <label key={layer.name} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-800 p-1.5 rounded transition-colors">
-                    <input 
-                      type="checkbox" 
-                      className="accent-[#f97316] w-4 h-4 cursor-pointer"
-                      checked={activeLayers.includes(layer.name)}
-                      onChange={() => toggleLayer(layer.name)}
-                    />
-                    <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: layer.color }}></div>
-                    <span className="truncate flex-1 text-gray-300">{layer.name}</span>
-                    <span className="text-gray-500 text-xs shrink-0">{layer.entityCount} entities</span>
-                  </label>
-                ))}
+              <h3 className="config-title">DXF Layers</h3>
+              <p className="text-xs text-gray-400 mb-3">Map layers to operations. You can also click lines directly on the drawing to toggle them.</p>
+              <div className="flex flex-col gap-3">
+                {effectiveGeometry.dxfData.layers.map(layer => {
+                  const currentIntent = layerIntents[layer.name] || "cut";
+                  return (
+                    <div key={layer.name} className="flex items-center justify-between text-sm hover:bg-gray-800 p-1.5 rounded transition-colors">
+                      <div className="flex items-center gap-2 overflow-hidden mr-2">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: layer.color }}></div>
+                        <span className="truncate text-gray-300">{layer.name}</span>
+                        <span className="text-gray-500 text-xs shrink-0">({layer.entityCount})</span>
+                      </div>
+                      <div className="flex bg-gray-900 rounded p-0.5 shrink-0">
+                        {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
+                          <button
+                            key={intent}
+                            onClick={() => setLayerIntents(prev => ({ ...prev, [layer.name]: intent }))}
+                            className={`px-2 py-1 text-xs rounded capitalize transition-colors ${
+                              currentIntent === intent
+                                ? intent === "cut" ? "bg-orange-500/20 text-orange-400" : intent === "bend" ? "bg-blue-500/20 text-blue-400" : "bg-gray-700 text-gray-200"
+                                : "text-gray-500 hover:text-gray-300"
+                            }`}
+                          >
+                            {intent}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -674,6 +697,23 @@ export default function QuoterPage() {
                 )}
               </div>
 
+              {/* Number of Bends */}
+              {effectiveGeometry.inputType === "dxf" && (
+                <div className="form-field">
+                  <label>Number of Bends</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={manualBendCount !== null ? manualBendCount : effectiveGeometry.bendCount}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setManualBendCount(val === "" ? 0 : parseInt(val));
+                    }}
+                  />
+                  <span className="field-hint">Auto-calculated from bend layers and clicks. Override if needed.</span>
+                </div>
+              )}
+
               {/* Quantity */}
               <div className="form-row-2">
                 <div className="form-field">
@@ -727,7 +767,15 @@ export default function QuoterPage() {
           {/* DXF Viewer on top of the right column */}
           {(phase.name === "ready" || phase.name === "saving") && effectiveGeometry?.inputType === "dxf" && (
             <div className="w-full h-80 shrink-0">
-              <DxfViewer geometry={effectiveGeometry} activeLayers={activeLayers} />
+              <DxfViewer 
+                geometry={effectiveGeometry} 
+                layerIntents={layerIntents} 
+                pathIntents={pathIntents}
+                onPathClick={(id, currentIntent) => {
+                  const nextIntent: DXFIntent = currentIntent === "cut" ? "bend" : currentIntent === "bend" ? "ignore" : "cut";
+                  setPathIntents(prev => ({ ...prev, [id]: nextIntent }));
+                }}
+              />
             </div>
           )}
 
