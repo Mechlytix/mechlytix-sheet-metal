@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { QuoteStatusManager } from "@/components/QuoteStatusManager";
 import { QuoteShareButton } from "@/components/QuoteShareButton";
+import { PdfDownloadButton } from "@/components/PdfDownloadButton";
 import type { Metadata } from "next";
 
 // ─────────────────────────────────────────────────────────
@@ -43,6 +44,12 @@ export default async function QuoteDetailPage({ params }: Props) {
 
   if (error || !quote) notFound();
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mat  = (quote as any).materials;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -76,15 +83,7 @@ export default async function QuoteDetailPage({ params }: Props) {
             )}
           </div>
           <div className="qd-header-actions">
-            <button className="btn-ghost" onClick={() => {}} id="print-btn"
-              suppressHydrationWarning
-            >
-              {/* Rendered as client-safe print button via inline script */}
-              <span>🖨</span> Print / PDF
-            </button>
-            <script
-              dangerouslySetInnerHTML={{ __html: `document.getElementById('print-btn').onclick = () => window.print();` }}
-            />
+            <PdfDownloadButton quote={quote} profile={profile} mat={mat} mach={mach} />
           </div>
         </div>
 

@@ -58,6 +58,7 @@ export default async function QuotesPage() {
                 <th>Customer</th>
                 <th>Status</th>
                 <th>Date</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -82,6 +83,11 @@ export default async function QuotesPage() {
                   <td><StatusBadge status={q.status ?? "draft"} /></td>
                   <td className="td-date">
                     {q.created_at ? new Date(q.created_at).toLocaleDateString("en-GB") : "—"}
+                  </td>
+                  <td>
+                    <Link href={`/dashboard/quotes/${q.id}`} className="btn-secondary" style={{ padding: "4px 8px", fontSize: "11px" }}>
+                      View
+                    </Link>
                   </td>
                 </tr>
               ))}
