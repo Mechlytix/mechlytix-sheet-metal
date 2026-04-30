@@ -7,9 +7,10 @@ import type { Metadata } from "next";
 // No auth. Token must match a quote with share_enabled=true.
 // ─────────────────────────────────────────────────────────
 
-interface Props { params: { token: string } }
+interface Props { params: Promise<{ token: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { token } = await params;
   return {
     title: "Your Quote — Mechlytix",
     description: "Your sheet metal fabrication quote, powered by Mechlytix.",
@@ -31,6 +32,7 @@ function row(label: string, value: string | null | undefined) {
 }
 
 export default async function QuoteSharePage({ params }: Props) {
+  const { token } = await params;
   const supabase = await createClient();
 
   const { data: quote, error } = await supabase
@@ -44,7 +46,7 @@ export default async function QuoteSharePage({ params }: Props) {
       materials ( name, grade, category, color_hex ),
       machine_profiles:machine_id ( name )
     `)
-    .eq("share_token", params.token)
+    .eq("share_token", token)
     .eq("share_enabled", true)
     .single();
 
@@ -360,7 +362,7 @@ export default async function QuoteSharePage({ params }: Props) {
             <h3>Ready to proceed?</h3>
             <p>
               Get in touch to confirm your order or request changes to this quote.
-              Reference: <strong>{params.token.slice(0, 8).toUpperCase()}</strong>
+              Reference: <strong>{token.slice(0, 8).toUpperCase()}</strong>
             </p>
             {quote.customer_email ? (
               <a href={`mailto:${quote.customer_email}`} className="qs-cta-btn">

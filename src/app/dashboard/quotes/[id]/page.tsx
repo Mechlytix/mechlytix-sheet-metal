@@ -11,9 +11,10 @@ import type { Metadata } from "next";
 // Server rendered. Client island handles status transitions.
 // ─────────────────────────────────────────────────────────
 
-interface Props { params: { id: string } }
+interface Props { params: Promise<{ id: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
   return { title: `Quote — Mechlytix` };
 }
 
@@ -27,6 +28,7 @@ function fmtMm(n: number | null | undefined) {
 }
 
 export default async function QuoteDetailPage({ params }: Props) {
+  const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) notFound();
@@ -38,7 +40,7 @@ export default async function QuoteDetailPage({ params }: Props) {
       materials ( name, grade, category, color_hex, cost_per_kg, density_kg_m3 ),
       machine_profiles:machine_id ( name, machine_type, hourly_rate, power_kw )
     `)
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("user_id", user.id)
     .single();
 
@@ -98,7 +100,7 @@ export default async function QuoteDetailPage({ params }: Props) {
             <strong>Mechlytix</strong>
           </div>
           <div>
-            <p className="qd-print-ref">Quote Reference: {params.id.slice(0, 8).toUpperCase()}</p>
+            <p className="qd-print-ref">Quote Reference: {id.slice(0, 8).toUpperCase()}</p>
             {createdDate && <p className="qd-print-date">Date: {createdDate}</p>}
           </div>
         </div>
