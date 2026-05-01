@@ -243,6 +243,7 @@ export default function QuoterPage() {
   const { units } = useDashboard();
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
   const [geometry, setGeometry] = useState<PricingGeometry | null>(null);
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [savedFilename, setSavedFilename] = useState("");
 
   // Config state
@@ -405,6 +406,7 @@ export default function QuoterPage() {
     }
 
     setPhase({ name: "analyzing", filename: file.name });
+    setSourceFile(file);
 
     try {
       let geo: PricingGeometry;
@@ -455,6 +457,33 @@ export default function QuoterPage() {
 
     const supabase = createClient();
     const geo = effectiveGeometry;
+    
+    // 1. Upload file if present
+    let uploadId = null;
+    if (sourceFile) {
+      const ext = sourceFile.name.split(".").pop()?.toLowerCase() || "bin";
+      const path = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+      
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from("step-files")
+        .upload(path, sourceFile);
+        
+      if (!uploadErr && uploadData) {
+        const { data: dbUpload } = await supabase.from("uploads").insert({
+          user_id: userId,
+          filename: sourceFile.name,
+          storage_path: path,
+          file_size_bytes: sourceFile.size,
+          file_type: sourceFile.type || `application/${ext}`,
+          status: "processed"
+        }).select("id").single();
+        if (dbUpload) uploadId = dbUpload.id;
+      } else {
+        console.warn("Failed to upload source file:", uploadErr);
+      }
+    }
+
+    // 2. Insert quote
     const { data, error } = await supabase.from("quotes").insert({
       user_id:            userId,
       filename:           phase.filename,
@@ -479,6 +508,7 @@ export default function QuoterPage() {
       customer_name:      customerName || null,
       notes:              notes || null,
       status:             "draft",
+      upload_id:          uploadId,
     }).select("id").single();
 
     if (error || !data) {

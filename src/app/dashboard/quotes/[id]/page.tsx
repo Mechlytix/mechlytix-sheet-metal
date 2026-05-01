@@ -4,6 +4,9 @@ import Link from "next/link";
 import { QuoteStatusManager } from "@/components/QuoteStatusManager";
 import { QuoteShareButton } from "@/components/QuoteShareButton";
 import { PdfDownloadButton } from "@/components/PdfDownloadButton";
+import { QuoteAttachments } from "@/components/QuoteAttachments";
+import { DxfViewer } from "@/components/DxfViewer";
+import { parseDXFGeometry } from "@/lib/dxf/parse-dxf";
 import type { Metadata } from "next";
 
 // ─────────────────────────────────────────────────────────
@@ -38,7 +41,9 @@ export default async function QuoteDetailPage({ params }: Props) {
     .select(`
       *,
       materials ( name, grade, category, color_hex, cost_per_kg, density_kg_m3 ),
-      machine_profiles:machine_id ( name, machine_type, hourly_rate, power_kw )
+      machine_profiles:machine_id ( name, machine_type, hourly_rate, power_kw ),
+      quote_attachments ( id, filename, created_at, uploads ( storage_path, file_size_bytes ) ),
+      uploads:upload_id ( storage_path )
     `)
     .eq("id", id)
     .eq("user_id", user.id)
@@ -69,6 +74,16 @@ export default async function QuoteDetailPage({ params }: Props) {
   const netCost = (quote.material_cost ?? 0) + (quote.cutting_cost ?? 0) + (quote.bending_cost ?? 0) + ((quote.setup_cost ?? 0) / Math.max(quote.quantity ?? 1, 1));
   const grossMargin = quote.unit_price ? ((quote.unit_price - netCost) / quote.unit_price * 100) : null;
 
+  // Fetch DXF preview if available
+  let dxfPreview = null;
+  if (quote.input_type === "dxf" && quote.uploads?.storage_path) {
+    const { data: fileData } = await supabase.storage.from("step-files").download(quote.uploads.storage_path);
+    if (fileData) {
+      const text = await fileData.text();
+      dxfPreview = parseDXFGeometry(text);
+    }
+  }
+
   return (
     <>
       {/* Print styles — scoped via @media print in globals.css */}
@@ -85,6 +100,9 @@ export default async function QuoteDetailPage({ params }: Props) {
             )}
           </div>
           <div className="qd-header-actions">
+            <Link href={`/dashboard/quotes/${id}/preview`} target="_blank" className="btn-secondary" style={{ padding: "8px 16px", borderRadius: "8px", fontWeight: "600", fontSize: "14px" }}>
+              👁 Preview Quote
+            </Link>
             <PdfDownloadButton quote={quote} profile={profile} mat={mat} mach={mach} />
           </div>
         </div>
@@ -202,6 +220,16 @@ export default async function QuoteDetailPage({ params }: Props) {
                 </div>
               </div>
             </div>
+
+            {/* DXF Preview */}
+            {dxfPreview && (
+              <div className="qd-section-card no-print">
+                <h3 className="qd-section-title">Interactive Preview</h3>
+                <div className="h-[400px] w-full">
+                  <DxfViewer geometry={dxfPreview} />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── Right column ── */}
@@ -305,6 +333,13 @@ export default async function QuoteDetailPage({ params }: Props) {
                 shareEnabled={Boolean((quote as Record<string, unknown>).share_enabled)}
               />
             </div>
+
+            {/* Attachments */}
+            <QuoteAttachments 
+              quoteId={quote.id} 
+              userId={user.id} 
+              initialAttachments={quote.quote_attachments || []} 
+            />
 
             {/* Print-only status */}
             <div className="print-only qd-print-status">

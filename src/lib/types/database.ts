@@ -47,6 +47,39 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["machine_profiles"]["Insert"]>;
         Relationships: [];
       };
+      quote_attachments: {
+        Row: {
+          id: string;
+          quote_id: string;
+          upload_id: string;
+          filename: string;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          quote_id: string;
+          upload_id: string;
+          filename: string;
+          created_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["quote_attachments"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "quote_attachments_quote_id_fkey";
+            columns: ["quote_id"];
+            isOneToOne: false;
+            referencedRelation: "quotes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "quote_attachments_upload_id_fkey";
+            columns: ["upload_id"];
+            isOneToOne: false;
+            referencedRelation: "uploads";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       materials: {
         Row: {
           category: string;
@@ -281,6 +314,7 @@ export type MachineProfile = Database["public"]["Tables"]["machine_profiles"]["R
 export type Quote = Database["public"]["Tables"]["quotes"]["Row"];
 export type Remnant = Database["public"]["Tables"]["remnants"]["Row"];
 export type Upload = Database["public"]["Tables"]["uploads"]["Row"];
+export type QuoteAttachment = Database["public"]["Tables"]["quote_attachments"]["Row"];
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type UserSettings = Database["public"]["Tables"]["user_settings"]["Row"];
 

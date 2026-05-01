@@ -5,12 +5,12 @@ import type { PricingGeometry, DXFIntent } from "@/lib/pricing/types";
 
 interface DxfViewerProps {
   geometry: PricingGeometry;
-  layerIntents: Record<string, DXFIntent>;
-  pathIntents: Record<string, DXFIntent>;
-  onPathClick: (pathId: string, currentIntent: DXFIntent) => void;
+  layerIntents?: Record<string, DXFIntent>;
+  pathIntents?: Record<string, DXFIntent>;
+  onPathClick?: (pathId: string, currentIntent: DXFIntent) => void;
 }
 
-export function DxfViewer({ geometry, layerIntents, pathIntents, onPathClick }: DxfViewerProps) {
+export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPathClick }: DxfViewerProps) {
   const { dxfData, boundingWidth, boundingHeight } = geometry;
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -167,7 +167,7 @@ export function DxfViewer({ geometry, layerIntents, pathIntents, onPathClick }: 
                 style={{ cursor: "pointer" }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (!dragMoved) {
+                  if (!dragMoved && onPathClick) {
                     onPathClick(path.id, currentIntent);
                   }
                 }}
