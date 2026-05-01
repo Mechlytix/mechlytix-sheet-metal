@@ -38,7 +38,7 @@ export default function RootLayout({
         </noscript>
       </head>
       <body>
-        <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem>
+        <ThemeProvider attribute="data-theme" defaultTheme="light" enableSystem>
           {children}
         </ThemeProvider>
       </body>

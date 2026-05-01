@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import "../marketing.css";
 import "../marketing2.css";
 
@@ -67,7 +68,8 @@ export default function MarketingLayout({
           </div>
 
           {/* Desktop CTAs */}
-          <div className="mkt-nav-actions">
+          <div className="mkt-nav-actions" style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <ThemeToggle />
             <Link href="/login" className="mkt-nav-link">Sign In</Link>
             <Link href="/login" className="mkt-cta-btn">Get Started</Link>
           </div>
@@ -90,6 +92,9 @@ export default function MarketingLayout({
             </Link>
           ))}
           <div className="mkt-mobile-divider" />
+          <div style={{ display: "flex", justifyContent: "center", margin: "12px 0" }}>
+            <ThemeToggle />
+          </div>
           <Link href="/login" className="mkt-mobile-link">Sign In</Link>
           <Link href="/login" className="mkt-cta-btn" style={{ marginTop: 8 }}>
             Get Started
