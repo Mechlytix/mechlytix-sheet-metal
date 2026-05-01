@@ -121,7 +121,7 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
 
   if (!dxfData || dxfData.paths.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-[#1a1c23] text-gray-500 rounded-lg border border-[#2d303a]">
+      <div className="flex items-center justify-center h-full w-full bg-[var(--bg-secondary)] text-gray-500 rounded-lg border border-[var(--border-subtle)]">
         No valid geometry available for preview.
       </div>
     );
@@ -130,7 +130,7 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
   return (
     <div 
       ref={containerRef}
-      className="w-full h-full relative overflow-hidden bg-[#1a1c23] rounded-lg border border-[#2d303a] shadow-inner flex flex-col group"
+      className="w-full h-full relative overflow-hidden bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-subtle)] shadow-inner flex flex-col group"
     >
       <div className="flex-1 relative min-h-[300px]">
         <svg

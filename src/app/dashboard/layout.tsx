@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { DashboardProvider } from "@/lib/dashboard-context";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { redirect } from "next/navigation";
 import type { Currency } from "@/lib/types/database";
 import "../dashboard.css";
@@ -60,7 +61,8 @@ export default async function DashboardLayout({
             <span className="dash-brand-name">{company ?? "Mechlytix"}</span>
           </div>
 
-          <div className="dash-top-bar-right">
+          <div className="dash-top-bar-right" style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <ThemeToggle />
             {/* User chip */}
             <div className="user-chip">
               <div className="user-chip-avatar">

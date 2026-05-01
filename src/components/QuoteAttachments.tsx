@@ -123,7 +123,7 @@ export function QuoteAttachments({ quoteId, userId, initialAttachments }: QuoteA
       {attachments.length > 0 && (
         <div className="flex flex-col gap-2 mb-4">
           {attachments.map(att => (
-            <div key={att.id} className="flex items-center justify-between p-2 rounded-md bg-[#1a1c23] border border-[#2d303a]">
+            <div key={att.id} className="flex items-center justify-between p-2 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
               <div className="flex items-center gap-3 overflow-hidden">
                 <div className="flex-shrink-0 text-gray-400">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
