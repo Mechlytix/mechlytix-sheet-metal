@@ -4,6 +4,7 @@ import Link from "next/link";
 import { QuoteStatusManager } from "@/components/QuoteStatusManager";
 import { QuoteShareButton } from "@/components/QuoteShareButton";
 import { PdfDownloadButton } from "@/components/PdfDownloadButton";
+import { PdfPreviewButton } from "@/components/PdfPreviewButton";
 import { QuoteAttachments } from "@/components/QuoteAttachments";
 import { DxfViewer } from "@/components/DxfViewer";
 import { parseDXFGeometry } from "@/lib/dxf/parse-dxf";
@@ -100,9 +101,7 @@ export default async function QuoteDetailPage({ params }: Props) {
             )}
           </div>
           <div className="qd-header-actions">
-            <Link href={`/dashboard/quotes/${id}/preview`} target="_blank" className="btn-secondary" style={{ padding: "8px 16px", borderRadius: "8px", fontWeight: "600", fontSize: "14px" }}>
-              👁 Preview Quote
-            </Link>
+            <PdfPreviewButton quote={quote} profile={profile} mat={mat} mach={mach} />
             <PdfDownloadButton quote={quote} profile={profile} mat={mat} mach={mach} />
           </div>
         </div>

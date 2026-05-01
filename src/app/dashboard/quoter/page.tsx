@@ -517,7 +517,7 @@ export default function QuoterPage() {
       return;
     }
     setPhase({ name: "saved", quoteId: data.id });
-  }, [phase, result, userId, effectiveGeometry, savedFilename, selectedMaterialId, selectedMachineId, quantity, markup]);
+  }, [phase, result, userId, effectiveGeometry, savedFilename, selectedMaterialId, selectedMachineId, quantity, markup, sourceFile]);
 
   const selectedMat  = materials.find((m) => m.id === selectedMaterialId);
   const selectedMach = machines.find((m) => m.id === selectedMachineId);
