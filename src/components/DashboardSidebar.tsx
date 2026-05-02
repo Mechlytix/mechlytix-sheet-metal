@@ -176,7 +176,11 @@ function UserSection({ collapsed }: { collapsed: boolean }) {
 
   return (
     <div className={`sidebar-user-section ${collapsed ? "collapsed" : ""}`}>
-      <div className="sidebar-user-info" title={collapsed ? `${user.displayName}` : undefined}>
+      <Link
+        href="/dashboard/account"
+        className="sidebar-user-info"
+        title={collapsed ? user.displayName : "Account settings"}
+      >
         <div className="sidebar-user-avatar">
           {user.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -191,7 +195,7 @@ function UserSection({ collapsed }: { collapsed: boolean }) {
             {user.company && <span className="sidebar-user-company">{user.company}</span>}
           </div>
         )}
-      </div>
+      </Link>
       <form action="/auth/signout" method="post">
         <button
           type="submit"
@@ -215,25 +219,15 @@ export function DashboardSidebar() {
 
   return (
     <aside className={`dashboard-sidebar ${collapsed ? "collapsed" : ""}`}>
-      {/* Sidebar panel toggle (VS Code / Arc style) */}
+      {/* Overhanging collapse toggle */}
       <button
         className={`sidebar-collapse-btn ${collapsed ? "is-collapsed" : ""}`}
         onClick={() => setCollapsed(!collapsed)}
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
-          {/* Outer frame */}
-          <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.6" />
-          {/* Sidebar panel portion — filled when expanded */}
-          <rect
-            className="panel-fill"
-            x="3" y="3" width="7" height="18" rx="2"
-            fill="currentColor"
-            opacity="0.35"
-          />
-          {/* Divider line */}
-          <line x1="10" y1="3" x2="10" y2="21" stroke="currentColor" strokeWidth="1.6" />
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
         </svg>
       </button>
 
@@ -271,24 +265,21 @@ export function DashboardSidebar() {
               <NavLink key={item.href} item={item} collapsed={collapsed} />
             ))}
           </nav>
-
-          {/* Spacer */}
-          <div style={{ flex: 1 }} />
-
-          {/* Settings link */}
-          <nav className="sidebar-nav sidebar-nav-secondary">
-            <NavLink
-              item={{ label: "Settings", href: "/dashboard/settings", icon: "settings" }}
-              collapsed={collapsed}
-            />
-          </nav>
         </>
       )}
 
-      {/* Spacer (push user section to bottom) */}
+      {/* Spacer — pushes settings + user to bottom */}
       <div style={{ flex: 1 }} />
 
-      {/* User section — always visible at bottom */}
+      {/* Settings link — sits directly above user */}
+      <nav className="sidebar-nav sidebar-nav-secondary">
+        <NavLink
+          item={{ label: "Settings", href: "/dashboard/settings", icon: "settings" }}
+          collapsed={collapsed}
+        />
+      </nav>
+
+      {/* User section — always at bottom */}
       <UserSection collapsed={collapsed} />
     </aside>
   );
