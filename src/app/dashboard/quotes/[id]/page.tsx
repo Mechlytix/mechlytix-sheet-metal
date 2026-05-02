@@ -8,6 +8,7 @@ import { PdfPreviewButton } from "@/components/PdfPreviewButton";
 import { QuoteAttachments } from "@/components/QuoteAttachments";
 import { DxfViewer } from "@/components/DxfViewer";
 import { parseDXFGeometry } from "@/lib/dxf/parse-dxf";
+import { QuoteEditPanel } from "@/components/QuoteEditPanel";
 import type { Metadata } from "next";
 
 // ─────────────────────────────────────────────────────────
@@ -101,6 +102,16 @@ export default async function QuoteDetailPage({ params }: Props) {
             )}
           </div>
           <div className="qd-header-actions">
+            <QuoteEditPanel
+              quoteId={quote.id}
+              userId={user.id}
+              initialCustomerId={(quote as Record<string, unknown>).customer_id as string | null}
+              initialCustomerRef={quote.customer_ref ?? null}
+              initialQuantity={quote.quantity ?? 1}
+              initialMarkup={quote.markup_percent ?? 15}
+              initialNotes={quote.notes ?? ""}
+              initialExpiresAt={quote.expires_at ?? null}
+            />
             <PdfPreviewButton quote={quote} profile={profile} mat={mat} mach={mach} />
             <PdfDownloadButton quote={quote} profile={profile} mat={mat} mach={mach} />
           </div>
