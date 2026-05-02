@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -93,12 +93,12 @@ function DropZone({
           <div className="dz-hero-formats">
             <span className="dz-format-pill">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              STEP / STP â€” 3D model
+              STEP / STP - 3D model
             </span>
-            <span className="dz-format-divider">Â·</span>
+            <span className="dz-format-divider">{"\u00B7"}</span>
             <span className="dz-format-pill">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-              DXF â€” 2D flat pattern
+              DXF - 2D flat pattern
             </span>
           </div>
         </>
@@ -118,7 +118,7 @@ function GeometryCard({ geo, units }: { geo: PricingGeometry; units: string }) {
         <div className="geo-item">
           <span className="geo-label">Flat Pattern</span>
           <span className="geo-value">
-            {formatLength(geo.boundingWidth, u, 0)} Ã— {formatLength(geo.boundingHeight, u, 0)}
+            {formatLength(geo.boundingWidth, u, 0)} {"\u00D7"} {formatLength(geo.boundingHeight, u, 0)}
           </span>
         </div>
         <div className="geo-item">
@@ -582,7 +582,7 @@ export default function QuoterPage() {
             setRemnantDismissed(false);
             setUsingRemnant(false);
           }}>
-            â† New File
+            {"\u2190"} New File
           </button>
         )}
       </div>
@@ -616,20 +616,12 @@ export default function QuoterPage() {
                           <span style={{ fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{layer.name}</span>
                           <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>({layer.entityCount})</span>
                         </div>
-                        <div style={{ display: "flex", background: "rgba(0,0,0,0.3)", borderRadius: 6, padding: 2, gap: 2, flexShrink: 0 }}>
+                        <div className="layer-intent-toggle">
                           {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
                             <button
                               key={intent}
+                              className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
                               onClick={() => setLayerIntents(prev => ({ ...prev, [layer.name]: intent }))}
-                              style={{
-                                padding: "3px 8px", fontSize: 11, borderRadius: 4, border: "none", cursor: "pointer", fontWeight: 500, textTransform: "capitalize",
-                                background: currentIntent === intent
-                                  ? intent === "cut" ? "rgba(255,102,0,0.2)" : intent === "bend" ? "rgba(96,165,250,0.2)" : "rgba(255,255,255,0.1)"
-                                  : "transparent",
-                                color: currentIntent === intent
-                                  ? intent === "cut" ? "var(--accent-primary)" : intent === "bend" ? "#60a5fa" : "var(--text-secondary)"
-                                  : "var(--text-dim)",
-                              }}
                             >{intent}</button>
                           ))}
                         </div>
@@ -690,7 +682,7 @@ export default function QuoterPage() {
                   ))}
                 </select>
                 {selectedMat && (
-                  <span className="field-hint">Â£{selectedMat.cost_per_kg.toFixed(2)}/kg Â· {selectedMat.density_kg_m3.toLocaleString()} kg/mÂ³ Â· K-factor {selectedMat.k_factor}</span>
+                  <span className="field-hint">Â£{selectedMat.cost_per_kg.toFixed(2)}/kg· {selectedMat.density_kg_m3.toLocaleString()} kg/mÂ³· K-factor {selectedMat.k_factor}</span>
                 )}
               </div>
 
@@ -780,7 +772,7 @@ export default function QuoterPage() {
               />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px", background: "var(--bg-secondary)", border: "1px dashed var(--border-subtle)", borderRadius: "var(--radius-lg)", textAlign: "center", gap: 10 }}>
-                <div style={{ fontSize: 28 }}>â˜ï¸</div>
+                <div style={{ fontSize: 28 }}>{"\u26A0\uFE0F"}</div>
                 <p style={{ margin: 0, fontWeight: 600, color: "var(--text-primary)", fontSize: 14 }}>Missing Parameters</p>
                 <p style={{ margin: 0, fontSize: 13, color: "var(--text-dim)" }}>Select a material, machine, and enter the material thickness to calculate a price.</p>
               </div>
