@@ -13,7 +13,7 @@ import { DxfViewer } from "@/components/DxfViewer";
 import { CustomerSelector } from "@/components/CustomerSelector";
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// /dashboard/quoter â€” Unified STEP / DXF Instant Quoter
+// /dashboard/quoter  -  Unified STEP / DXF Instant Quoter
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface RemnantMatch {
@@ -552,7 +552,7 @@ export default function QuoterPage() {
     return (
       <div className="dash-page">
         <div className="quote-saved-banner">
-          <span className="qs-icon">âœ“</span>
+          <span className="qs-icon">✓</span>
           <div>
             <h2>Quote Saved</h2>
             <p>Your quote has been saved to the quote history.</p>
@@ -652,16 +652,16 @@ export default function QuoterPage() {
                         }}
                       >
                         <span className="rb-dot" style={{ background: r.materials?.color_hex ?? "#888" }} />
-                        <span className="rb-dims">{r.width_mm} Ã— {r.height_mm} Ã— {r.thickness_mm}mm</span>
-                        {r.location && <span className="rb-loc">ðŸ“ {r.location}</span>}
+                        <span className="rb-dims">{r.width_mm} × {r.height_mm} × {r.thickness_mm}mm</span>
+                        {r.location && <span className="rb-loc">{"📍"} {r.location}</span>}
                       </button>
                     ))}
                   </div>
                   {usingRemnant && (
-                    <p className="rb-using">âœ“ Using remnant â€” no nesting waste applied (15% saving)</p>
+                    <p className="rb-using">✓ Using remnant â€” no nesting waste applied (15% saving)</p>
                   )}
                 </div>
-                <button className="rb-dismiss" onClick={() => { setRemnantDismissed(true); setUsingRemnant(false); }}>âœ•</button>
+                <button className="rb-dismiss" onClick={() => { setRemnantDismissed(true); setUsingRemnant(false); }}>✕</button>
               </div>
             )}
 

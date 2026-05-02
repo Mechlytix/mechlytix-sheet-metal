@@ -14,6 +14,7 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
   const { dxfData, boundingWidth, boundingHeight } = geometry;
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [showGrid, setShowGrid] = useState(true);
 
   // Default viewbox calculations
   const defaultViewBox = useMemo(() => {
@@ -119,24 +120,59 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
     return maxDim > 0 ? maxDim / 400 : 1;
   }, [vb.w, vb.h]);
 
+  // Grid pattern — auto-scales to a sensible spacing
+  const gridSpacing = useMemo(() => {
+    const maxDim = Math.max(vb.w, vb.h);
+    // Choose a grid spacing that gives roughly 8-15 lines across the view
+    const raw = maxDim / 10;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const candidates = [1, 2, 5, 10];
+    for (const c of candidates) {
+      if (c * mag >= raw * 0.5) return c * mag;
+    }
+    return 10 * mag;
+  }, [vb.w, vb.h]);
+
   if (!dxfData || dxfData.paths.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-[var(--bg-secondary)] text-gray-500 rounded-lg border border-[var(--border-subtle)]">
+      <div className="dxf-viewer-empty">
         No valid geometry available for preview.
       </div>
     );
   }
 
+  // Grid line generation
+  const gridLines = useMemo(() => {
+    if (!showGrid) return null;
+    const gs = gridSpacing;
+    const startX = Math.floor(vb.x / gs) * gs;
+    const endX = Math.ceil((vb.x + vb.w) / gs) * gs;
+    const startY = Math.floor(vb.y / gs) * gs;
+    const endY = Math.ceil((vb.y + vb.h) / gs) * gs;
+    const lines: React.ReactNode[] = [];
+    for (let x = startX; x <= endX; x += gs) {
+      lines.push(
+        <line key={`gx-${x}`} x1={x} y1={startY} x2={x} y2={endY} />
+      );
+    }
+    for (let y = startY; y <= endY; y += gs) {
+      lines.push(
+        <line key={`gy-${y}`} x1={startX} y1={y} x2={endX} y2={y} />
+      );
+    }
+    return lines;
+  }, [showGrid, gridSpacing, vb]);
+
   return (
     <div 
       ref={containerRef}
-      className="w-full h-full relative overflow-hidden bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-subtle)] shadow-inner flex flex-col group"
+      className="dxf-viewer-container"
     >
-      <div className="flex-1 relative min-h-[300px]">
+      <div className="dxf-viewer-canvas">
         <svg
           ref={svgRef}
           viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
-          className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"
+          className="dxf-viewer-svg"
           style={{ transform: "scaleY(-1)", touchAction: "none" }}
           preserveAspectRatio="xMidYMid meet"
           onPointerDown={handlePointerDown}
@@ -144,10 +180,18 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         >
+          {/* Grid */}
+          {gridLines && (
+            <g className="dxf-grid" strokeWidth={strokeWidth * 0.3}>
+              {gridLines}
+            </g>
+          )}
+
+          {/* Paths */}
           {dxfData.paths.map((path) => {
             const currentIntent = pathIntents[path.id] || layerIntents[path.layer] || "cut";
             
-            let strokeColor = "var(--dxf-ignore)"; // ignore
+            let strokeColor = "var(--dxf-ignore)";
             if (currentIntent === "cut") strokeColor = "var(--dxf-cut)";
             if (currentIntent === "bend") strokeColor = "var(--dxf-bend)";
             
@@ -180,18 +224,33 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
         </svg>
       </div>
 
-      {/* Toolbar / Overlay info */}
-      <div className="absolute top-4 right-4 flex gap-2">
+      {/* Toolbar */}
+      <div className="dxf-toolbar">
+        <button
+          className={`dxf-toolbar-btn ${showGrid ? "active" : ""}`}
+          onClick={() => setShowGrid(!showGrid)}
+          title={showGrid ? "Hide grid" : "Show grid"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+            <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+          </svg>
+        </button>
         <button 
+          className="dxf-toolbar-btn"
           onClick={handleReset}
-          className="bg-black/60 hover:bg-black/80 text-gray-300 hover:text-white px-3 py-1.5 rounded-md backdrop-blur-sm text-xs font-medium transition-colors border border-gray-700 pointer-events-auto"
           title="Reset View"
         >
-          Reset View
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="1 4 1 10 7 10"/>
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+          </svg>
         </button>
       </div>
 
-      <div className="absolute bottom-4 left-4 flex gap-4 text-[11px] font-mono text-gray-400 bg-black/60 px-3 py-2 rounded-md backdrop-blur-sm pointer-events-none">
+      {/* Dimensions badge */}
+      <div className="dxf-dims-badge">
         <span>W: {boundingWidth.toFixed(1)}mm</span>
         <span>H: {boundingHeight.toFixed(1)}mm</span>
       </div>
