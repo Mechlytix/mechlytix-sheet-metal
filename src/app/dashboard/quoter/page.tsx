@@ -749,7 +749,7 @@ export default function QuoterPage() {
           {/* Right: DXF viewer + price breakdown */}
           <div className="quoter-right" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {effectiveGeometry?.inputType === "dxf" && (
-              <div style={{ width: "100%", height: 320, flexShrink: 0 }}>
+              <div style={{ width: "100%", height: 450, flexShrink: 0 }}>
                 <DxfViewer
                   geometry={effectiveGeometry}
                   layerIntents={layerIntents}
