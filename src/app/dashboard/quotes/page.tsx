@@ -59,36 +59,34 @@ export default async function QuotesPage() {
                 <th>Customer</th>
                 <th>Status</th>
                 <th>Date</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {quotes.map((q) => (
-                <tr key={q.id}>
-                  <td className="td-filename">
-                    <Link href={`/dashboard/quotes/${q.id}`}>{q.filename}</Link>
-                    {q.quote_number && <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: 6 }}>{q.quote_number}</span>}
-                  </td>
-                  <td><span className="input-type-badge">{q.input_type}</span></td>
-                  <td className="td-muted">
-                    {/* @ts-expect-error — joined relation */}
-                    {q.materials ? q.materials.name : "—"}
-                  </td>
-                  <td className="td-muted">
-                    {q.thickness_mm != null ? `${q.thickness_mm}mm` : "—"}
-                  </td>
-                  <td className="td-muted">{q.bend_count ?? "—"}</td>
-                  <td>{q.quantity ?? 1}</td>
-                  <td>{q.unit_price != null ? `£${q.unit_price.toFixed(2)}` : "—"}</td>
-                  <td className="td-price">{q.total_price != null ? `£${q.total_price.toFixed(2)}` : "—"}</td>
-                  <td className="td-muted">{q.customer_name ?? "—"}</td>
-                  <td><StatusBadge status={q.status ?? "draft"} /></td>
-                  <td className="td-date">
-                    {q.created_at ? new Date(q.created_at).toLocaleDateString("en-GB") : "—"}
-                  </td>
-                  <td>
-                    <Link href={`/dashboard/quotes/${q.id}`} className="btn-secondary" style={{ padding: "4px 8px", fontSize: "11px" }}>
-                      View
+                <tr key={q.id} className="quote-row-link">
+                  <td colSpan={11} style={{ padding: 0 }}>
+                    <Link href={`/dashboard/quotes/${q.id}`} className="quote-row-inner">
+                      <span className="td-filename">
+                        {q.filename}
+                        {q.quote_number && <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: 6 }}>{q.quote_number}</span>}
+                      </span>
+                      <span><span className="input-type-badge">{q.input_type}</span></span>
+                      <span className="td-muted">
+                        {/* @ts-expect-error — joined relation */}
+                        {q.materials ? q.materials.name : "—"}
+                      </span>
+                      <span className="td-muted">
+                        {q.thickness_mm != null ? `${q.thickness_mm}mm` : "—"}
+                      </span>
+                      <span className="td-muted">{q.bend_count ?? "—"}</span>
+                      <span>{q.quantity ?? 1}</span>
+                      <span>{q.unit_price != null ? `£${q.unit_price.toFixed(2)}` : "—"}</span>
+                      <span className="td-price">{q.total_price != null ? `£${q.total_price.toFixed(2)}` : "—"}</span>
+                      <span className="td-muted">{q.customer_name ?? "—"}</span>
+                      <span><StatusBadge status={q.status ?? "draft"} /></span>
+                      <span className="td-date">
+                        {q.created_at ? new Date(q.created_at).toLocaleDateString("en-GB") : "—"}
+                      </span>
                     </Link>
                   </td>
                 </tr>

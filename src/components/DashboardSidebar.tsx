@@ -24,8 +24,12 @@ const PRIMARY_NAV: NavItem[] = [
   { label: "Scrap Rack",  href: "/dashboard/scrap-rack", icon: "refresh-cw" },
 ];
 
-const SECONDARY_NAV: NavItem[] = [
-  { label: "Settings",    href: "/dashboard/settings",   icon: "settings" },
+const SETTINGS_NAV: NavItem[] = [
+  { label: "Profile",      href: "/dashboard/settings/profile",     icon: "user" },
+  { label: "Quoting",      href: "/dashboard/settings/quoting",     icon: "dollar-sign" },
+  { label: "Branding",     href: "/dashboard/settings/branding",    icon: "palette" },
+  { label: "Machines",     href: "/dashboard/settings/machines",    icon: "cpu" },
+  { label: "Preferences",  href: "/dashboard/settings/preferences", icon: "sliders" },
 ];
 
 // ─── Icon SVGs ────────────────────────────────────────────
@@ -86,6 +90,53 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
         <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
       </svg>
     ),
+    // ── Settings sub-nav icons ──
+    user: (
+      <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </svg>
+    ),
+    "dollar-sign": (
+      <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+      </svg>
+    ),
+    palette: (
+      <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/>
+        <circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/>
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
+      </svg>
+    ),
+    cpu: (
+      <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/>
+        <line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/>
+        <line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/>
+        <line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/>
+        <line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+      </svg>
+    ),
+    sliders: (
+      <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+        <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+        <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/>
+        <line x1="17" y1="16" x2="23" y2="16"/>
+      </svg>
+    ),
+    "arrow-left": (
+      <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+      </svg>
+    ),
+    "log-out": (
+      <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+    ),
   };
   return <>{icons[name] ?? null}</>;
 }
@@ -94,7 +145,6 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 
 function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const pathname = usePathname();
-  // Active: exact match for /dashboard, prefix match for sub-routes
   const isActive =
     item.href === "/dashboard"
       ? pathname === "/dashboard"
@@ -119,25 +169,39 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   );
 }
 
-// ─── Unit Toggle ───────────────────────────────────────────
+// ─── User Section ──────────────────────────────────────────
 
-function UnitToggle({ collapsed }: { collapsed: boolean }) {
-  const { units, setUnits } = useDashboard();
+function UserSection({ collapsed }: { collapsed: boolean }) {
+  const { user } = useDashboard();
+
   return (
-    <div className={`unit-toggle ${collapsed ? "collapsed" : ""}`} title={collapsed ? `Units: ${units}` : undefined}>
-      {!collapsed && <span className="unit-toggle-label">Units</span>}
-      <div className="unit-toggle-buttons">
-        <button
-          className={`unit-btn ${units === "metric" ? "active" : ""}`}
-          onClick={() => setUnits("metric")}
-          title="Metric (mm / kg)"
-        >mm</button>
-        <button
-          className={`unit-btn ${units === "imperial" ? "active" : ""}`}
-          onClick={() => setUnits("imperial")}
-          title="Imperial (in / lb)"
-        >in</button>
+    <div className={`sidebar-user-section ${collapsed ? "collapsed" : ""}`}>
+      <div className="sidebar-user-info" title={collapsed ? `${user.displayName}` : undefined}>
+        <div className="sidebar-user-avatar">
+          {user.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={user.avatarUrl} alt={user.displayName} width={30} height={30} />
+          ) : (
+            <span>{user.displayName[0]?.toUpperCase() ?? "U"}</span>
+          )}
+        </div>
+        {!collapsed && (
+          <div className="sidebar-user-details">
+            <span className="sidebar-user-name">{user.displayName}</span>
+            {user.company && <span className="sidebar-user-company">{user.company}</span>}
+          </div>
+        )}
       </div>
+      <form action="/auth/signout" method="post">
+        <button
+          type="submit"
+          className="sidebar-signout-btn"
+          title="Sign out"
+        >
+          <Icon name="log-out" size={16} />
+          {!collapsed && <span>Sign out</span>}
+        </button>
+      </form>
     </div>
   );
 }
@@ -146,42 +210,77 @@ function UnitToggle({ collapsed }: { collapsed: boolean }) {
 
 export function DashboardSidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const pathname = usePathname();
+  const inSettings = pathname.startsWith("/dashboard/settings");
 
   return (
     <aside className={`dashboard-sidebar ${collapsed ? "collapsed" : ""}`}>
-      {/* Collapse toggle */}
+      {/* Edge-mounted collapse pill */}
       <button
         className="sidebar-collapse-btn"
         onClick={() => setCollapsed(!collapsed)}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        data-collapsed={collapsed}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          {collapsed
-            ? <><polyline points="9 18 15 12 9 6"/></>
-            : <><polyline points="15 18 9 12 15 6"/></>
-          }
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
         </svg>
       </button>
 
-      {/* Primary navigation */}
-      <nav className="sidebar-nav">
-        {PRIMARY_NAV.map((item) => (
-          <NavLink key={item.href} item={item} collapsed={collapsed} />
-        ))}
-      </nav>
+      {inSettings ? (
+        <>
+          {/* Back button */}
+          <Link
+            href="/dashboard"
+            className="sidebar-back-btn"
+            title={collapsed ? "Back to dashboard" : undefined}
+          >
+            <span className="sidebar-nav-icon">
+              <Icon name="arrow-left" />
+            </span>
+            {!collapsed && <span className="sidebar-back-label">Back</span>}
+          </Link>
 
-      {/* Spacer */}
+          {/* Settings section label */}
+          {!collapsed && (
+            <div className="sidebar-section-label">Settings</div>
+          )}
+
+          {/* Settings sub-navigation */}
+          <nav className="sidebar-nav">
+            {SETTINGS_NAV.map((item) => (
+              <NavLink key={item.href} item={item} collapsed={collapsed} />
+            ))}
+          </nav>
+        </>
+      ) : (
+        <>
+          {/* Primary navigation */}
+          <nav className="sidebar-nav">
+            {PRIMARY_NAV.map((item) => (
+              <NavLink key={item.href} item={item} collapsed={collapsed} />
+            ))}
+          </nav>
+
+          {/* Spacer */}
+          <div style={{ flex: 1 }} />
+
+          {/* Settings link */}
+          <nav className="sidebar-nav sidebar-nav-secondary">
+            <NavLink
+              item={{ label: "Settings", href: "/dashboard/settings", icon: "settings" }}
+              collapsed={collapsed}
+            />
+          </nav>
+        </>
+      )}
+
+      {/* Spacer (push user section to bottom) */}
       <div style={{ flex: 1 }} />
 
-      {/* Unit toggle */}
-      <UnitToggle collapsed={collapsed} />
-
-      {/* Secondary navigation */}
-      <nav className="sidebar-nav sidebar-nav-secondary">
-        {SECONDARY_NAV.map((item) => (
-          <NavLink key={item.href} item={item} collapsed={collapsed} />
-        ))}
-      </nav>
+      {/* User section — always visible at bottom */}
+      <UserSection collapsed={collapsed} />
     </aside>
   );
 }

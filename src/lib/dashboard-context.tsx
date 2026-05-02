@@ -6,8 +6,14 @@ import type { Currency } from "@/lib/types/database";
 import { CURRENCY_SYMBOLS } from "@/lib/types/database";
 
 // ─────────────────────────────────────────────────────────
-// Global Dashboard context: unit system + currency preference
+// Global Dashboard context: unit system + currency + user
 // ─────────────────────────────────────────────────────────
+
+interface UserInfo {
+  displayName: string;
+  company: string | null;
+  avatarUrl: string | null;
+}
 
 interface DashboardContextValue {
   units: UnitSystem;
@@ -15,6 +21,7 @@ interface DashboardContextValue {
   currency: Currency;
   setCurrency: (c: Currency) => void;
   currencySymbol: string;
+  user: UserInfo;
 }
 
 const DashboardContext = createContext<DashboardContextValue>({
@@ -23,6 +30,7 @@ const DashboardContext = createContext<DashboardContextValue>({
   currency: "GBP",
   setCurrency: () => {},
   currencySymbol: "£",
+  user: { displayName: "User", company: null, avatarUrl: null },
 });
 
 export function useDashboard() {
@@ -32,12 +40,16 @@ export function useDashboard() {
 export function DashboardProvider({
   children,
   initialCurrency = "GBP",
+  user,
 }: {
   children: React.ReactNode;
   initialCurrency?: Currency;
+  user?: UserInfo;
 }) {
   const [units, setUnits] = useState<UnitSystem>("metric");
   const [currency, setCurrency] = useState<Currency>(initialCurrency);
+
+  const userInfo = user ?? { displayName: "User", company: null, avatarUrl: null };
 
   return (
     <DashboardContext.Provider
@@ -47,6 +59,7 @@ export function DashboardProvider({
         currency,
         setCurrency,
         currencySymbol: CURRENCY_SYMBOLS[currency],
+        user: userInfo,
       }}
     >
       {children}

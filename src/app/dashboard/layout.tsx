@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { DashboardProvider } from "@/lib/dashboard-context";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { redirect } from "next/navigation";
 import type { Currency } from "@/lib/types/database";
 import "../dashboard.css";
@@ -37,15 +36,18 @@ export default async function DashboardLayout({
 
   const displayName =
     profile?.full_name ?? user.email?.split("@")[0] ?? "User";
-  const company = profile?.company;
-  const avatarUrl = profile?.avatar_url;
+  const company = profile?.company ?? null;
+  const avatarUrl = profile?.avatar_url ?? null;
   const logoUrl = profile?.logo_url;
   const currency = (settings?.currency ?? "GBP") as Currency;
 
   return (
-    <DashboardProvider initialCurrency={currency}>
+    <DashboardProvider
+      initialCurrency={currency}
+      user={{ displayName, company, avatarUrl }}
+    >
       <div className="app-container">
-        {/* Top Bar */}
+        {/* Top Bar — minimal brand-only header */}
         <header className="top-bar dash-top-bar">
           <div className="dash-top-bar-brand">
             {logoUrl ? (
@@ -59,32 +61,6 @@ export default async function DashboardLayout({
               </svg>
             )}
             <span className="dash-brand-name">{company ?? "Mechlytix"}</span>
-          </div>
-
-          <div className="dash-top-bar-right" style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-            <ThemeToggle />
-            {/* User chip */}
-            <div className="user-chip">
-              <div className="user-chip-avatar">
-                {avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={avatarUrl} alt={displayName} width={28} height={28} />
-                ) : (
-                  <span>{displayName[0].toUpperCase()}</span>
-                )}
-              </div>
-              <div className="user-chip-info">
-                <span className="user-chip-name">{displayName}</span>
-                {company && <span className="user-chip-company">{company}</span>}
-              </div>
-              {/* Dropdown */}
-              <div className="user-chip-menu">
-                <a href="/dashboard/settings" className="user-menu-item">Settings</a>
-                <form action="/auth/signout" method="post">
-                  <button type="submit" className="user-menu-item danger">Sign out</button>
-                </form>
-              </div>
-            </div>
           </div>
         </header>
 

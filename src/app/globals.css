@@ -24,6 +24,9 @@
   --radius-lg: 12px;
   --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --dxf-cut: #f97316;
+  --dxf-bend: #3b82f6;
+  --dxf-ignore: #3d404f;
 }
 
 [data-theme='light'] {
@@ -40,6 +43,9 @@
   --accent-secondary: #f97316;
   --accent-glow: rgba(234, 88, 12, 0.1);
   --shadow-panel: 0 4px 20px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.05);
+  --dxf-cut: #0d9488;
+  --dxf-bend: #6366f1;
+  --dxf-ignore: #cbd5e1;
 }
 
 /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

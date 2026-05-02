@@ -147,9 +147,9 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
           {dxfData.paths.map((path) => {
             const currentIntent = pathIntents[path.id] || layerIntents[path.layer] || "cut";
             
-            let strokeColor = "#3d404f"; // ignore
-            if (currentIntent === "cut") strokeColor = "#f97316"; // orange
-            if (currentIntent === "bend") strokeColor = "#3b82f6"; // blue
+            let strokeColor = "var(--dxf-ignore)"; // ignore
+            if (currentIntent === "cut") strokeColor = "var(--dxf-cut)";
+            if (currentIntent === "bend") strokeColor = "var(--dxf-bend)";
             
             const opacity = currentIntent === "ignore" ? 0.2 : 1.0;
 
@@ -158,13 +158,16 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
                 key={path.id}
                 d={path.svgPath}
                 fill="none"
-                stroke={strokeColor}
-                strokeWidth={strokeWidth * (currentIntent === "ignore" ? 0.5 : 1.5)} // make cut/bends thicker
+                strokeWidth={strokeWidth * (currentIntent === "ignore" ? 0.5 : 1.5)}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                opacity={opacity}
-                className="transition-colors duration-300 hover:stroke-white hover:opacity-100"
-                style={{ cursor: "pointer" }}
+                className={`dxf-path dxf-path--${currentIntent}`}
+                style={{
+                  stroke: strokeColor,
+                  opacity,
+                  cursor: "pointer",
+                  transition: "stroke 0.3s, opacity 0.3s",
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!dragMoved && onPathClick) {
