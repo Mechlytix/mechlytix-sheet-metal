@@ -46,6 +46,9 @@ export default function SettingsPage() {
     default_markup_percent: "15",
     quote_expiry_days: "30",
     currency: "GBP" as Currency,
+    brand_color: "#ff6600",
+    quote_prefix: "Q-",
+    next_quote_number: "1",
   });
   const [defaultsSaved, setDefaultsSaved] = useState(false);
   const [, startDefaultsTransition] = useTransition();
@@ -82,6 +85,9 @@ export default function SettingsPage() {
       default_markup_percent: String(s.default_markup_percent),
       quote_expiry_days:      String(s.quote_expiry_days),
       currency:               (s.currency as Currency) ?? "GBP",
+      brand_color:            s.brand_color ?? "#ff6600",
+      quote_prefix:           s.quote_prefix ?? "Q-",
+      next_quote_number:      String(s.next_quote_number ?? 1),
     });
 
     setLoading(false);
@@ -147,6 +153,9 @@ export default function SettingsPage() {
         default_markup_percent: parseFloat(defaults.default_markup_percent) || 15,
         quote_expiry_days:     parseInt(defaults.quote_expiry_days) || 30,
         currency:              defaults.currency,
+        brand_color:           defaults.brand_color,
+        quote_prefix:          defaults.quote_prefix || "Q-",
+        next_quote_number:     parseInt(defaults.next_quote_number) || 1,
         updated_at:            new Date().toISOString(),
       });
       setCurrency(defaults.currency);
@@ -336,6 +345,72 @@ export default function SettingsPage() {
 
           <button className="btn-primary" onClick={saveDefaults}>
             {defaultsSaved ? "✓ Saved" : "Save Defaults"}
+          </button>
+        </section>
+
+        {/* ── Quote Branding ── */}
+        <section className="settings-card">
+          <h2 className="settings-card-title">Quote Branding</h2>
+          <p className="settings-card-desc">Customise the look and numbering of your PDF quotes.</p>
+
+          {/* Brand Colour */}
+          <div className="form-field">
+            <label>Brand Colour</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <input
+                type="color"
+                value={defaults.brand_color}
+                onChange={(e) => setDefaults((d) => ({ ...d, brand_color: e.target.value }))}
+                style={{ width: 40, height: 34, padding: 0, border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", cursor: "pointer", background: "transparent" }}
+              />
+              <input
+                type="text"
+                value={defaults.brand_color}
+                onChange={(e) => setDefaults((d) => ({ ...d, brand_color: e.target.value }))}
+                placeholder="#ff6600"
+                style={{ flex: 1, fontFamily: "var(--font-mono, monospace)" }}
+                maxLength={7}
+              />
+              <div style={{ width: 60, height: 34, borderRadius: "var(--radius-md)", background: defaults.brand_color, border: "1px solid var(--border-subtle)" }} />
+            </div>
+            <span className="field-hint">Used as the accent colour on your quote PDFs (header bar, table headers, totals).</span>
+          </div>
+
+          {/* Quote Prefix + Next Number */}
+          <div className="form-row-2">
+            <div className="form-field">
+              <label>Quote Prefix</label>
+              <input
+                type="text"
+                value={defaults.quote_prefix}
+                onChange={(e) => setDefaults((d) => ({ ...d, quote_prefix: e.target.value }))}
+                placeholder="Q-"
+                maxLength={10}
+              />
+              <span className="field-hint">e.g. Q-, QTE-, INV-</span>
+            </div>
+            <div className="form-field">
+              <label>Next Quote Number</label>
+              <input
+                type="number"
+                min="1"
+                value={defaults.next_quote_number}
+                onChange={(e) => setDefaults((d) => ({ ...d, next_quote_number: e.target.value }))}
+              />
+              <span className="field-hint">The next auto-assigned number</span>
+            </div>
+          </div>
+
+          {/* Live preview */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)" }}>
+            <span style={{ fontSize: 11, color: "var(--text-dim)" }}>Next quote will be:</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: defaults.brand_color, fontFamily: "var(--font-mono, monospace)" }}>
+              {defaults.quote_prefix}{String(parseInt(defaults.next_quote_number) || 1).padStart(5, '0')}
+            </span>
+          </div>
+
+          <button className="btn-primary" onClick={saveDefaults} style={{ marginTop: 4 }}>
+            {defaultsSaved ? "✓ Saved" : "Save Branding"}
           </button>
         </section>
 

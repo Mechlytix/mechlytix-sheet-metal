@@ -7,7 +7,7 @@ import { QuotePdfDocument } from "./QuotePdfDocument";
 // We dynamically import BlobProvider to prevent SSR issues with react-pdf
 const BlobProvider = dynamic(
   () => import("@react-pdf/renderer").then((mod) => mod.BlobProvider),
-  { ssr: false, loading: () => <button className="btn-secondary" disabled style={{ padding: "8px 16px", borderRadius: "8px", fontWeight: "600", fontSize: "14px" }}>Loading...</button> }
+  { ssr: false, loading: () => <button className="btn-ghost" disabled>Loading...</button> }
 );
 
 interface PdfPreviewButtonProps {
@@ -15,9 +15,11 @@ interface PdfPreviewButtonProps {
   profile: any;
   mat: any;
   mach: any;
+  brandColor?: string;
+  customer?: any;
 }
 
-export function PdfPreviewButton({ quote, profile, mat, mach }: PdfPreviewButtonProps) {
+export function PdfPreviewButton({ quote, profile, mat, mach, brandColor, customer }: PdfPreviewButtonProps) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -25,25 +27,24 @@ export function PdfPreviewButton({ quote, profile, mat, mach }: PdfPreviewButton
   }, []);
 
   if (!mounted) {
-    return <button className="btn-secondary" disabled style={{ padding: "8px 16px", borderRadius: "8px", fontWeight: "600", fontSize: "14px" }}>Loading...</button>;
+    return <button className="btn-ghost" disabled>Loading...</button>;
   }
 
   return (
-    <BlobProvider document={<QuotePdfDocument quote={quote} profile={profile} mat={mat} mach={mach} />}>
+    <BlobProvider document={<QuotePdfDocument quote={quote} profile={profile} mat={mat} mach={mach} brandColor={brandColor} customer={customer} />}>
       {({ url, loading, error }) => {
         if (loading) {
-          return <button className="btn-secondary" disabled style={{ padding: "8px 16px", borderRadius: "8px", fontWeight: "600", fontSize: "14px" }}>Loading PDF...</button>;
+          return <button className="btn-ghost" disabled>Loading PDF...</button>;
         }
         if (error) {
-          return <button className="btn-secondary" disabled style={{ padding: "8px 16px", borderRadius: "8px", fontWeight: "600", fontSize: "14px" }}>Error</button>;
+          return <button className="btn-ghost" disabled>Error</button>;
         }
         return (
           <a
             href={url || "#"}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn-secondary"
-            style={{ padding: "8px 16px", borderRadius: "8px", fontWeight: "600", fontSize: "14px" }}
+            className="btn-ghost"
           >
             👁 Preview Quote
           </a>

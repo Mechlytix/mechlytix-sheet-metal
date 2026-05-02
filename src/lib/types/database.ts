@@ -306,6 +306,7 @@ export type Database = {
           perimeter_mm: number | null
           pierce_count: number | null
           quantity: number | null
+          quote_number: string | null
           setup_cost: number | null
           share_enabled: boolean
           share_token: string | null
@@ -341,6 +342,7 @@ export type Database = {
           perimeter_mm?: number | null
           pierce_count?: number | null
           quantity?: number | null
+          quote_number?: string | null
           setup_cost?: number | null
           share_enabled?: boolean
           share_token?: string | null
@@ -376,6 +378,7 @@ export type Database = {
           perimeter_mm?: number | null
           pierce_count?: number | null
           quantity?: number | null
+          quote_number?: string | null
           setup_cost?: number | null
           share_enabled?: boolean
           share_token?: string | null
@@ -566,26 +569,35 @@ export type Database = {
       }
       user_settings: {
         Row: {
+          brand_color: string
           created_at: string | null
           currency: string
           default_markup_percent: number
+          next_quote_number: number
           quote_expiry_days: number
+          quote_prefix: string
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          brand_color?: string
           created_at?: string | null
           currency?: string
           default_markup_percent?: number
+          next_quote_number?: number
           quote_expiry_days?: number
+          quote_prefix?: string
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          brand_color?: string
           created_at?: string | null
           currency?: string
           default_markup_percent?: number
+          next_quote_number?: number
           quote_expiry_days?: number
+          quote_prefix?: string
           updated_at?: string | null
           user_id?: string
         }

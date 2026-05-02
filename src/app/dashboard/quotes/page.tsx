@@ -13,6 +13,7 @@ export default async function QuotesPage() {
     .select(`
       id, filename, input_type, quantity, unit_price, total_price,
       status, customer_name, thickness_mm, bend_count, created_at,
+      quote_number,
       materials(name, category)
     `)
     .eq("user_id", user.id)
@@ -66,6 +67,7 @@ export default async function QuotesPage() {
                 <tr key={q.id}>
                   <td className="td-filename">
                     <Link href={`/dashboard/quotes/${q.id}`}>{q.filename}</Link>
+                    {q.quote_number && <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: 6 }}>{q.quote_number}</span>}
                   </td>
                   <td><span className="input-type-badge">{q.input_type}</span></td>
                   <td className="td-muted">

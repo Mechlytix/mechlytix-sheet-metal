@@ -59,6 +59,27 @@ export default async function QuoteDetailPage({ params }: Props) {
     .eq("id", user.id)
     .single();
 
+  // Fetch brand colour from user settings
+  const { data: settings } = await supabase
+    .from("user_settings")
+    .select("brand_color")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const brandColor = settings?.brand_color ?? '#ff6600';
+
+  // Fetch linked customer record (if customer_id is set)
+  const customerId = (quote as Record<string, unknown>).customer_id as string | null;
+  let customer = null;
+  if (customerId) {
+    const { data: c } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("id", customerId)
+      .single();
+    customer = c;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mat  = (quote as any).materials;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -98,7 +119,11 @@ export default async function QuoteDetailPage({ params }: Props) {
             </div>
             <h1 className="dash-page-title">{quote.filename}</h1>
             {createdDate && (
-              <p className="dash-page-subtitle">Created {createdDate}</p>
+              <p className="dash-page-subtitle">
+                {quote.quote_number && <strong>{quote.quote_number}</strong>}
+                {quote.quote_number && " · "}
+                Created {createdDate}
+              </p>
             )}
           </div>
           <div className="qd-header-actions">
@@ -112,8 +137,8 @@ export default async function QuoteDetailPage({ params }: Props) {
               initialNotes={quote.notes ?? ""}
               initialExpiresAt={quote.expires_at ?? null}
             />
-            <PdfPreviewButton quote={quote} profile={profile} mat={mat} mach={mach} />
-            <PdfDownloadButton quote={quote} profile={profile} mat={mat} mach={mach} />
+            <PdfPreviewButton quote={quote} profile={profile} mat={mat} mach={mach} brandColor={brandColor} customer={customer} />
+            <PdfDownloadButton quote={quote} profile={profile} mat={mat} mach={mach} brandColor={brandColor} customer={customer} />
           </div>
         </div>
 
