@@ -10,6 +10,7 @@ import { formatCurrency, formatLength } from "@/lib/units";
 import type { PricingGeometry, PricingResult, DXFIntent } from "@/lib/pricing/types";
 import type { Material, MachineProfile } from "@/lib/types/database";
 import { DxfViewer } from "@/components/DxfViewer";
+import { CustomerSelector } from "@/components/CustomerSelector";
 
 // ─────────────────────────────────────────────────────────
 // /dashboard/quoter — Unified STEP / DXF Instant Quoter
@@ -148,13 +149,15 @@ function QuoteBreakdown({
   filename,
   onSave,
   saving,
+  userId,
 }: {
   result: PricingResult;
   filename: string;
-  onSave: (customerName: string, notes: string) => void;
+  onSave: (customerId: string | null, notes: string) => void;
   saving: boolean;
+  userId: string | null;
 }) {
-  const [customer, setCustomer] = useState("");
+  const [customerId, setCustomerId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
 
   const rows = [
@@ -218,8 +221,12 @@ function QuoteBreakdown({
       {/* Save quote */}
       <div className="quote-save-section">
         <div className="form-field">
-          <label>Customer Name (optional)</label>
-          <input value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="Acme Engineering" />
+          <label>Customer</label>
+          <CustomerSelector
+            userId={userId}
+            value={customerId}
+            onChange={(id) => setCustomerId(id)}
+          />
         </div>
         <div className="form-field">
           <label>Notes (optional)</label>
@@ -227,7 +234,7 @@ function QuoteBreakdown({
         </div>
         <button
           className="btn-primary"
-          onClick={() => onSave(customer, notes)}
+          onClick={() => onSave(customerId, notes)}
           disabled={saving}
         >
           {saving ? "Saving…" : "💾 Save Quote"}
@@ -451,7 +458,7 @@ export default function QuoterPage() {
   }, []);
 
   // Save quote to Supabase
-  const handleSave = useCallback(async (customerName: string, notes: string) => {
+  const handleSave = useCallback(async (customerId: string | null, notes: string) => {
     if (phase.name !== "ready" || !result || !userId || !effectiveGeometry) return;
     setPhase({ name: "saving" });
 
@@ -505,7 +512,7 @@ export default function QuoterPage() {
       setup_cost:         result.setupCostTotal,
       unit_price:         result.unitPrice,
       total_price:        result.totalPrice,
-      customer_name:      customerName || null,
+      customer_id:        customerId || null,
       notes:              notes || null,
       status:             "draft",
       upload_id:          uploadId,
@@ -815,6 +822,7 @@ export default function QuoterPage() {
               filename={savedFilename}
               onSave={handleSave}
               saving={phase.name === "saving"}
+              userId={userId}
             />
           )}
 
