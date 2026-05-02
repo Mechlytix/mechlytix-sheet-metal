@@ -4,88 +4,9 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-// ─── Field helper ─────────────────────────────────────────
-
-function Field({
-  label,
-  id,
-  required,
-  children,
-  hint,
-}: {
-  label: string;
-  id: string;
-  required?: boolean;
-  children: React.ReactNode;
-  hint?: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium text-[var(--text-primary)]">
-        {label}
-        {required && <span className="text-red-400 ml-0.5">*</span>}
-      </label>
-      {children}
-      {hint && <span className="text-xs text-[var(--text-tertiary)]">{hint}</span>}
-    </div>
-  );
-}
-
-function Input({ id, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { id: string }) {
-  return (
-    <input
-      id={id}
-      {...props}
-      className="px-3 py-2 text-sm rounded-md bg-[var(--bg-primary)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-transparent transition-shadow"
-    />
-  );
-}
-
-function Textarea({ id, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { id: string }) {
-  return (
-    <textarea
-      id={id}
-      {...props}
-      className="px-3 py-2 text-sm rounded-md bg-[var(--bg-primary)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-transparent transition-shadow resize-none"
-    />
-  );
-}
-
-// ─── Address Block ────────────────────────────────────────
-
-interface AddressBlockProps {
-  prefix: string;
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}
-
-function AddressBlock({ prefix, label, value, onChange }: AddressBlockProps) {
-  return (
-    <Field label={label} id={`${prefix}_address`}>
-      <Textarea
-        id={`${prefix}_address`}
-        rows={3}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={`Street, City, Postcode, Country`}
-      />
-    </Field>
-  );
-}
-
-// ─── Section heading ──────────────────────────────────────
-
-function SectionHeader({ title, description }: { title: string; description?: string }) {
-  return (
-    <div className="pb-4 border-b border-[var(--border-subtle)]">
-      <h2 className="text-base font-semibold text-[var(--text-primary)]">{title}</h2>
-      {description && <p className="text-sm text-[var(--text-secondary)] mt-0.5">{description}</p>}
-    </div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+// /dashboard/customers/new
+// ─────────────────────────────────────────────────────────
 
 export default function NewCustomerPage() {
   const router = useRouter();
@@ -143,30 +64,45 @@ export default function NewCustomerPage() {
   }
 
   return (
-    <div className="p-6 md:p-8 max-w-3xl mx-auto">
-      {/* Page header */}
-      <div className="mb-8">
+    <div className="dash-page" style={{ maxWidth: 780 }}>
+      {/* Breadcrumb */}
+      <div>
         <button
           onClick={() => router.back()}
-          className="inline-flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors mb-4"
+          className="btn-ghost-sm"
+          style={{ display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 16, fontSize: 13 }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
           </svg>
           Back to Customers
         </button>
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Add New Customer</h1>
-        <p className="text-sm text-[var(--text-secondary)] mt-1">Create a customer profile to link to quotes.</p>
+        <h1 className="dash-page-title">Add New Customer</h1>
+        <p className="dash-page-subtitle">Create a client profile to link to quotes and invoices.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Contact Information */}
-        <section className="space-y-5">
-          <SectionHeader title="Contact Information" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <Field label="Contact Name" id="name" required>
-              <Input
-                id="name"
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+        {/* ── Contact Information ─────────────────── */}
+        <div className="settings-card">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 16, borderBottom: "1px solid var(--border-subtle)" }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,102,0,0.1)", border: "1px solid rgba(255,102,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <div>
+              <h2 className="settings-card-title" style={{ margin: 0 }}>Contact Information</h2>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="form-field" style={{ gridColumn: "1 / 2" }}>
+              <label htmlFor="cust-name">
+                Contact Name <span style={{ color: "var(--accent-primary)" }}>*</span>
+              </label>
+              <input
+                id="cust-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -174,124 +110,170 @@ export default function NewCustomerPage() {
                 required
                 autoFocus
               />
-            </Field>
-            <Field label="Company Name" id="company_name">
-              <Input
-                id="company_name"
+            </div>
+            <div className="form-field">
+              <label htmlFor="cust-company">Company Name</label>
+              <input
+                id="cust-company"
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="Acme Engineering Ltd"
               />
-            </Field>
-            <Field label="Email Address" id="email">
-              <Input
-                id="email"
+            </div>
+            <div className="form-field">
+              <label htmlFor="cust-email">Email Address</label>
+              <input
+                id="cust-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="jane@acme.com"
               />
-            </Field>
-            <Field label="Phone Number" id="phone">
-              <Input
-                id="phone"
+            </div>
+            <div className="form-field">
+              <label htmlFor="cust-phone">Phone Number</label>
+              <input
+                id="cust-phone"
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+44 7700 000000"
               />
-            </Field>
-            <Field label="Tax ID / VAT Number" id="tax_id" hint="Optional — for invoice and PDF generation">
-              <Input
-                id="tax_id"
+            </div>
+            <div className="form-field" style={{ gridColumn: "1 / 3" }}>
+              <label htmlFor="cust-tax">Tax ID / VAT Number</label>
+              <input
+                id="cust-tax"
                 type="text"
                 value={taxId}
                 onChange={(e) => setTaxId(e.target.value)}
                 placeholder="GB123456789"
+                style={{ maxWidth: 320 }}
               />
-            </Field>
+              <span className="field-hint">Optional — used on invoices and PDF quotes</span>
+            </div>
           </div>
-        </section>
+        </div>
 
-        {/* Billing Address */}
-        <section className="space-y-5">
-          <SectionHeader title="Billing Address" />
-          <AddressBlock
-            prefix="billing"
-            label="Billing Address"
-            value={billingAddress}
-            onChange={setBillingAddress}
-          />
-        </section>
+        {/* ── Billing Address ──────────────────────── */}
+        <div className="settings-card">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 16, borderBottom: "1px solid var(--border-subtle)" }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,102,0,0.1)", border: "1px solid rgba(255,102,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+              </svg>
+            </div>
+            <h2 className="settings-card-title" style={{ margin: 0 }}>Billing Address</h2>
+          </div>
+          <div className="form-field">
+            <label htmlFor="billing-addr">Billing Address</label>
+            <textarea
+              id="billing-addr"
+              rows={3}
+              value={billingAddress}
+              onChange={(e) => setBillingAddress(e.target.value)}
+              placeholder={"Line 1\nCity, Postcode\nCountry"}
+            />
+          </div>
+        </div>
 
-        {/* Shipping Address */}
-        <section className="space-y-5">
-          <div className="flex items-center justify-between pb-4 border-b border-[var(--border-subtle)]">
-            <div>
-              <h2 className="text-base font-semibold text-[var(--text-primary)]">Shipping Address</h2>
-              <p className="text-sm text-[var(--text-secondary)] mt-0.5">Where parts should be delivered</p>
+        {/* ── Shipping Address ─────────────────────── */}
+        <div className="settings-card">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 16, borderBottom: "1px solid var(--border-subtle)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,102,0,0.1)", border: "1px solid rgba(255,102,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.8" strokeLinecap="round">
+                  <rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                </svg>
+              </div>
+              <h2 className="settings-card-title" style={{ margin: 0 }}>Shipping Address</h2>
             </div>
             {/* Same as billing toggle */}
-            <label htmlFor="same_as_billing" className="flex items-center gap-2 cursor-pointer select-none group">
-              <div className="relative">
+            <label htmlFor="same-as-billing" style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+              <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 500 }}>Same as billing</span>
+              <div style={{ position: "relative", display: "inline-block" }}>
                 <input
-                  id="same_as_billing"
+                  id="same-as-billing"
                   type="checkbox"
-                  className="sr-only"
                   checked={sameAsBilling}
                   onChange={(e) => setSameAsBilling(e.target.checked)}
+                  style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
                 />
-                <div className={`w-10 h-6 rounded-full transition-colors ${sameAsBilling ? "bg-[var(--accent-primary)]" : "bg-[var(--border-subtle)]"}`} />
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform shadow-sm ${sameAsBilling ? "translate-x-5" : "translate-x-1"}`} />
+                <div style={{
+                  width: 40, height: 22, borderRadius: 11,
+                  background: sameAsBilling ? "var(--accent-primary)" : "rgba(255,255,255,0.1)",
+                  border: `1px solid ${sameAsBilling ? "var(--accent-primary)" : "var(--border-subtle)"}`,
+                  transition: "background 0.2s, border-color 0.2s",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0 3px",
+                }}>
+                  <div style={{
+                    width: 16, height: 16, borderRadius: "50%", background: "white",
+                    transition: "transform 0.2s",
+                    transform: sameAsBilling ? "translateX(18px)" : "translateX(0)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                  }} />
+                </div>
               </div>
-              <span className="text-sm text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors">
-                Same as billing
-              </span>
             </label>
           </div>
 
           {sameAsBilling ? (
-            <div className="px-4 py-3 rounded-md bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/20 text-sm text-[var(--accent-primary)]">
-              ✓ Shipping address will match billing address
+            <div style={{ padding: "12px 14px", borderRadius: 8, background: "rgba(255,102,0,0.08)", border: "1px solid rgba(255,102,0,0.2)", fontSize: 13, color: "var(--accent-primary)", display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              Shipping address will match billing address
             </div>
           ) : (
-            <AddressBlock
-              prefix="shipping"
-              label="Shipping Address"
-              value={shippingAddress}
-              onChange={setShippingAddress}
-            />
+            <div className="form-field">
+              <label htmlFor="shipping-addr">Shipping Address</label>
+              <textarea
+                id="shipping-addr"
+                rows={3}
+                value={shippingAddress}
+                onChange={(e) => setShippingAddress(e.target.value)}
+                placeholder={"Line 1\nCity, Postcode\nCountry"}
+              />
+            </div>
           )}
-        </section>
+        </div>
 
-        {/* Notes */}
-        <section className="space-y-5">
-          <SectionHeader title="Notes" description="Any additional information about this customer" />
-          <Field label="Internal Notes" id="notes">
-            <Textarea
-              id="notes"
+        {/* ── Notes ────────────────────────────────── */}
+        <div className="settings-card">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 16, borderBottom: "1px solid var(--border-subtle)" }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,102,0,0.1)", border: "1px solid rgba(255,102,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </div>
+            <h2 className="settings-card-title" style={{ margin: 0 }}>Internal Notes</h2>
+          </div>
+          <div className="form-field">
+            <label htmlFor="cust-notes">Notes</label>
+            <textarea
+              id="cust-notes"
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Payment terms, preferred contacts, special requirements…"
             />
-          </Field>
-        </section>
+          </div>
+        </div>
 
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--border-subtle)]">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="px-4 py-2 text-sm font-medium rounded-md border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--text-tertiary)] transition-colors"
-          >
+        {/* ── Actions ───────────────────────────────── */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 4 }}>
+          <button type="button" onClick={() => router.back()} className="btn-ghost">
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving || !name.trim()}
-            className="px-5 py-2 text-sm font-medium rounded-md bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary"
           >
             {saving ? "Creating…" : "Create Customer"}
           </button>

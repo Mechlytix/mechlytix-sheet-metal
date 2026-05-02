@@ -37,7 +37,7 @@ export function CustomerListClient({ initialCustomers }: Props) {
   }, [customers, search]);
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete customer "${name}"? This will remove the customer link from any associated quotes.`)) return;
+    if (!confirm(`Delete customer "${name}"? This will unlink them from any associated quotes.`)) return;
     setDeletingId(id);
     const supabase = createClient();
     const { error } = await supabase.from("customers").delete().eq("id", id);
@@ -52,20 +52,19 @@ export function CustomerListClient({ initialCustomers }: Props) {
 
   if (customers.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
-        <div className="w-16 h-16 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center mb-4">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "64px 32px", textAlign: "center", gap: "16px" }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,102,0,0.08)", border: "1px solid rgba(255,102,0,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
             <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
         </div>
-        <h3 className="text-base font-semibold text-[var(--text-primary)] mb-1">No customers yet</h3>
-        <p className="text-sm text-[var(--text-secondary)] mb-6">Add your first client to start linking quotes to customers.</p>
-        <Link
-          href="/dashboard/customers/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-sm font-medium rounded-md transition-colors"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <div>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", margin: "0 0 6px" }}>No customers yet</h3>
+          <p style={{ fontSize: 13, color: "var(--text-dim)", margin: 0 }}>Add your first client to start linking quotes to customers.</p>
+        </div>
+        <Link href="/dashboard/customers/new" className="btn-primary" style={{ marginTop: 4 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Add First Customer
         </Link>
       </div>
@@ -75,78 +74,87 @@ export function CustomerListClient({ initialCustomers }: Props) {
   return (
     <div>
       {/* Search bar */}
-      <div className="p-4 border-b border-[var(--border-subtle)]">
-        <div className="relative max-w-sm">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input
-            type="search"
-            placeholder="Search customers…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-transparent"
-          />
+      <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-subtle)" }}>
+        <div className="filter-bar" style={{ margin: 0 }}>
+          <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
+            <svg style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--text-dim)", pointerEvents: "none" }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="search"
+              placeholder="Search by name, company or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="search-input"
+              style={{ paddingLeft: 34, width: "100%" }}
+            />
+          </div>
         </div>
       </div>
 
       {/* Table */}
       {filtered.length === 0 ? (
-        <div className="py-12 text-center text-sm text-[var(--text-secondary)]">
+        <div style={{ padding: "48px 32px", textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
           No customers match &ldquo;{search}&rdquo;
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div style={{ overflowX: "auto" }}>
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-[var(--border-subtle)]">
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)] whitespace-nowrap">Name</th>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)] whitespace-nowrap">Company</th>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)] whitespace-nowrap">Email</th>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)] whitespace-nowrap">Phone</th>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)] whitespace-nowrap">Added</th>
-                <th className="px-5 py-3 text-right font-medium text-[var(--text-secondary)] whitespace-nowrap">Actions</th>
+              <tr>
+                <th>Name / Company</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Added</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--border-subtle)]">
+            <tbody>
               {filtered.map((c) => (
-                <tr
-                  key={c.id}
-                  className="hover:bg-[var(--bg-tertiary)] transition-colors group"
-                >
-                  <td className="px-5 py-3 font-medium text-[var(--text-primary)]">
-                    <Link href={`/dashboard/customers/${c.id}`} className="hover:text-[var(--accent-primary)] transition-colors">
+                <tr key={c.id}>
+                  <td>
+                    <Link href={`/dashboard/customers/${c.id}`} style={{ color: "var(--accent-primary)", fontWeight: 500, textDecoration: "none", fontSize: 13 }}>
                       {c.name}
                     </Link>
+                    {c.company_name && (
+                      <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>{c.company_name}</div>
+                    )}
                   </td>
-                  <td className="px-5 py-3 text-[var(--text-secondary)]">{c.company_name ?? "—"}</td>
-                  <td className="px-5 py-3 text-[var(--text-secondary)]">
+                  <td className="td-muted">
                     {c.email ? (
-                      <a href={`mailto:${c.email}`} className="hover:text-[var(--accent-primary)] transition-colors">{c.email}</a>
+                      <a href={`mailto:${c.email}`} style={{ color: "var(--text-secondary)", textDecoration: "none" }} onMouseOver={(e) => (e.currentTarget.style.color = "var(--accent-primary)")} onMouseOut={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}>
+                        {c.email}
+                      </a>
                     ) : "—"}
                   </td>
-                  <td className="px-5 py-3 text-[var(--text-secondary)]">{c.phone ?? "—"}</td>
-                  <td className="px-5 py-3 text-[var(--text-secondary)] whitespace-nowrap">
+                  <td className="td-muted">{c.phone ?? "—"}</td>
+                  <td className="td-date">
                     {c.created_at ? new Date(c.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
                   </td>
-                  <td className="px-5 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                  <td style={{ textAlign: "right" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
                       <Link
                         href={`/dashboard/customers/${c.id}`}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md bg-[var(--bg-primary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent-primary)] transition-colors"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-subtle)", borderRadius: 6, color: "var(--text-dim)", fontSize: 12, fontWeight: 500, textDecoration: "none", transition: "all 0.15s" }}
+                        onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border-active)"; (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
+                        onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border-subtle)"; (e.currentTarget as HTMLElement).style.color = "var(--text-dim)"; }}
                       >
                         View
                       </Link>
                       <Link
                         href={`/dashboard/customers/${c.id}/edit`}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md bg-[var(--bg-primary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent-primary)] transition-colors"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-subtle)", borderRadius: 6, color: "var(--text-dim)", fontSize: 12, fontWeight: 500, textDecoration: "none", transition: "all 0.15s" }}
+                        onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border-active)"; (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
+                        onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border-subtle)"; (e.currentTarget as HTMLElement).style.color = "var(--text-dim)"; }}
                       >
                         Edit
                       </Link>
                       <button
                         onClick={() => handleDelete(c.id, c.name)}
                         disabled={deletingId === c.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-red-400 hover:bg-red-500/10 hover:border-red-500/30 transition-colors disabled:opacity-50"
+                        className="icon-btn danger"
+                        title="Delete customer"
+                        style={{ width: "auto", padding: "4px 10px", fontSize: 12, fontWeight: 500 }}
                       >
                         {deletingId === c.id ? "…" : "Delete"}
                       </button>
@@ -159,9 +167,8 @@ export function CustomerListClient({ initialCustomers }: Props) {
         </div>
       )}
 
-      <div className="px-5 py-3 border-t border-[var(--border-subtle)] text-xs text-[var(--text-tertiary)]">
-        {filtered.length} customer{filtered.length !== 1 ? "s" : ""}
-        {search && ` matching "${search}"`}
+      <div style={{ padding: "10px 20px", borderTop: "1px solid var(--border-subtle)", fontSize: 12, color: "var(--text-dim)" }}>
+        {filtered.length} customer{filtered.length !== 1 ? "s" : ""}{search && ` matching "${search}"`}
       </div>
     </div>
   );

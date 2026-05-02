@@ -14,31 +14,29 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 // ─── Status badge ─────────────────────────────────────────
 
-const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  draft:    { bg: "bg-gray-500/15",  text: "text-gray-400",  label: "Draft" },
-  sent:     { bg: "bg-blue-500/15",  text: "text-blue-400",  label: "Sent" },
-  accepted: { bg: "bg-green-500/15", text: "text-green-400", label: "Accepted" },
-  declined: { bg: "bg-red-500/15",   text: "text-red-400",   label: "Declined" },
-  expired:  { bg: "bg-yellow-500/15",text: "text-yellow-400",label: "Expired" },
+const STATUS_CLASSES: Record<string, string> = {
+  draft:    "status-badge badge-neutral",
+  sent:     "status-badge badge-blue",
+  accepted: "status-badge badge-green",
+  declined: "status-badge badge-red",
+  expired:  "status-badge badge-red",
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_STYLES[status] ?? STATUS_STYLES.draft;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${s.bg} ${s.text}`}>
-      {s.label}
+    <span className={STATUS_CLASSES[status] ?? STATUS_CLASSES.draft} style={{ textTransform: "capitalize" }}>
+      {status ?? "draft"}
     </span>
   );
 }
 
 // ─── Info row ─────────────────────────────────────────────
 
-function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
-  if (!value) return null;
+function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5 py-3 border-b border-[var(--border-subtle)] last:border-0">
-      <span className="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">{label}</span>
-      <span className="text-sm text-[var(--text-primary)]">{value}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 3, padding: "10px 0", borderBottom: "1px solid var(--border-subtle)" }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</span>
+      <span style={{ fontSize: 13, color: "var(--text-primary)" }}>{children}</span>
     </div>
   );
 }
@@ -62,47 +60,38 @@ export default async function CustomerDetailPage({ params }: Props) {
 
   const { data: quotes } = await supabase
     .from("quotes")
-    .select("id, filename, status, unit_price, total_price, quantity, material_id, materials(name), created_at, input_type, thickness_mm, bend_count")
+    .select("id, filename, status, unit_price, total_price, quantity, materials(name), created_at, input_type, thickness_mm, bend_count")
     .eq("customer_id", id)
     .order("created_at", { ascending: false });
 
-  const totalRevenue = quotes?.filter(q => q.status === "accepted").reduce((sum, q) => sum + (q.total_price ?? 0), 0) ?? 0;
+  const totalQuotes = quotes?.length ?? 0;
+  const acceptedRevenue = quotes?.filter(q => q.status === "accepted").reduce((s, q) => s + (Number(q.total_price) || 0), 0) ?? 0;
+  const activeQuotes = quotes?.filter(q => q.status === "sent").length ?? 0;
 
   return (
-    <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-8">
+    <div className="dash-page">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+      <div className="dash-page-header">
         <div>
-          <Link
-            href="/dashboard/customers"
-            className="inline-flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors mb-3"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <Link href="/dashboard/customers" className="btn-ghost-sm" style={{ display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 10, fontSize: 12 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
             Customers
           </Link>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">{customer.name}</h1>
-          {customer.company_name && (
-            <p className="text-sm text-[var(--text-secondary)] mt-0.5">{customer.company_name}</p>
-          )}
+          <h1 className="dash-page-title">{customer.name}</h1>
+          {customer.company_name && <p className="dash-page-subtitle">{customer.company_name}</p>}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Link
-            href={`/dashboard/customers/${id}/edit`}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--text-tertiary)] transition-colors bg-[var(--bg-secondary)]"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Link href={`/dashboard/customers/${id}/edit`} className="btn-ghost">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
             </svg>
-            Edit
+            Edit Customer
           </Link>
-          <Link
-            href={`/dashboard/quoter`}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <Link href="/dashboard/quoter" className="btn-primary">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
             </svg>
             New Quote
@@ -110,147 +99,164 @@ export default async function CustomerDetailPage({ params }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: customer info */}
-        <div className="lg:col-span-1 space-y-5">
-          {/* Stats */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-[var(--text-primary)]">{quotes?.length ?? 0}</div>
-              <div className="text-xs text-[var(--text-secondary)] mt-0.5">Total Quotes</div>
-            </div>
-            <div className="bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-green-400">
-                £{totalRevenue.toFixed(0)}
-              </div>
-              <div className="text-xs text-[var(--text-secondary)] mt-0.5">Accepted Value</div>
-            </div>
+      {/* Stats strip */}
+      <div className="stat-strip" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+        <div className="stat-card">
+          <div className="stat-icon">📄</div>
+          <div className="stat-body">
+            <div className="stat-value">{totalQuotes}</div>
+            <div className="stat-label">Total Quotes</div>
           </div>
+        </div>
+        <div className="stat-card stat-green">
+          <div className="stat-icon">💰</div>
+          <div className="stat-body">
+            <div className="stat-value">£{acceptedRevenue.toFixed(0)}</div>
+            <div className="stat-label">Accepted Value</div>
+          </div>
+        </div>
+        <div className="stat-card stat-blue">
+          <div className="stat-icon">📨</div>
+          <div className="stat-body">
+            <div className="stat-value">{activeQuotes}</div>
+            <div className="stat-label">Sent / Active</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main body */}
+      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20, alignItems: "start" }}>
+
+        {/* Left: profile info */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* Contact details */}
-          <div className="bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg">
-            <div className="px-5 py-4 border-b border-[var(--border-subtle)]">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Contact Details</h2>
+          <div className="settings-card" style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 8 }}>
+              <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Contact</h2>
             </div>
-            <div className="px-5">
-              <InfoRow label="Email" value={customer.email ? <a href={`mailto:${customer.email}`} className="hover:text-[var(--accent-primary)] transition-colors">{customer.email}</a> : null} />
-              <InfoRow label="Phone" value={customer.phone} />
-              <InfoRow label="Tax ID / VAT" value={customer.tax_id} />
-              <InfoRow label="Added" value={customer.created_at ? new Date(customer.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }) : null} />
+            <div style={{ padding: "0 18px 8px" }}>
+              {customer.email ? (
+                <InfoRow label="Email">
+                  <a href={`mailto:${customer.email}`} style={{ color: "var(--accent-primary)", textDecoration: "none" }}>{customer.email}</a>
+                </InfoRow>
+              ) : null}
+              {customer.phone ? <InfoRow label="Phone">{customer.phone}</InfoRow> : null}
+              {customer.tax_id ? <InfoRow label="Tax ID / VAT">{customer.tax_id}</InfoRow> : null}
+              <InfoRow label="Customer Since">
+                {customer.created_at ? new Date(customer.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }) : "—"}
+              </InfoRow>
             </div>
           </div>
 
           {/* Addresses */}
           {(customer.billing_address || customer.shipping_address) && (
-            <div className="bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg">
-              <div className="px-5 py-4 border-b border-[var(--border-subtle)]">
-                <h2 className="text-sm font-semibold text-[var(--text-primary)]">Addresses</h2>
+            <div className="settings-card" style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border-subtle)" }}>
+                <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Addresses</h2>
               </div>
-              <div className="px-5">
-                <InfoRow
-                  label="Billing Address"
-                  value={customer.billing_address
-                    ? <span className="whitespace-pre-line leading-relaxed">{customer.billing_address}</span>
-                    : null}
-                />
-                <InfoRow
-                  label="Shipping Address"
-                  value={customer.shipping_address
-                    ? <span className="whitespace-pre-line leading-relaxed">{customer.shipping_address}</span>
-                    : null}
-                />
+              <div style={{ padding: "0 18px 8px" }}>
+                {customer.billing_address && (
+                  <InfoRow label="Billing">
+                    <span style={{ whiteSpace: "pre-line", lineHeight: 1.6 }}>{customer.billing_address}</span>
+                  </InfoRow>
+                )}
+                {customer.shipping_address && customer.shipping_address !== customer.billing_address && (
+                  <InfoRow label="Shipping">
+                    <span style={{ whiteSpace: "pre-line", lineHeight: 1.6 }}>{customer.shipping_address}</span>
+                  </InfoRow>
+                )}
+                {customer.shipping_address === customer.billing_address && customer.billing_address && (
+                  <InfoRow label="Shipping">
+                    <span style={{ color: "var(--text-dim)", fontStyle: "italic", fontSize: 12 }}>Same as billing</span>
+                  </InfoRow>
+                )}
               </div>
             </div>
           )}
 
           {/* Notes */}
           {customer.notes && (
-            <div className="bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg">
-              <div className="px-5 py-4 border-b border-[var(--border-subtle)]">
-                <h2 className="text-sm font-semibold text-[var(--text-primary)]">Notes</h2>
+            <div className="settings-card" style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border-subtle)" }}>
+                <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Notes</h2>
               </div>
-              <p className="px-5 py-4 text-sm text-[var(--text-secondary)] whitespace-pre-line leading-relaxed">{customer.notes}</p>
+              <p style={{ margin: 0, padding: "14px 18px", fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, whiteSpace: "pre-line" }}>{customer.notes}</p>
             </div>
           )}
         </div>
 
-        {/* Right column: quotes */}
-        <div className="lg:col-span-2">
-          <div className="bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg overflow-hidden">
-            <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Quotes</h2>
-              <span className="text-xs text-[var(--text-tertiary)]">{quotes?.length ?? 0} total</span>
-            </div>
-
-            {!quotes || quotes.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center px-8">
-                <div className="w-12 h-12 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center mb-3">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                  </svg>
-                </div>
-                <p className="text-sm text-[var(--text-secondary)] mb-3">No quotes linked to this customer yet.</p>
-                <Link
-                  href="/dashboard/quoter"
-                  className="text-sm font-medium text-[var(--accent-primary)] hover:underline"
-                >
-                  Create a quote →
-                </Link>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border-subtle)]">
-                      <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)]">Part</th>
-                      <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)]">Status</th>
-                      <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)]">Unit Price</th>
-                      <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)]">Qty</th>
-                      <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)]">Total</th>
-                      <th className="px-5 py-3 text-left font-medium text-[var(--text-secondary)]">Date</th>
-                      <th className="px-5 py-3 text-right font-medium text-[var(--text-secondary)]">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--border-subtle)]">
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    {(quotes as any[]).map((q) => (
-                      <tr key={q.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
-                        <td className="px-5 py-3">
-                          <div className="font-medium text-[var(--text-primary)] max-w-[180px] truncate" title={q.filename}>
-                            {q.filename}
-                          </div>
-                          <div className="text-xs text-[var(--text-tertiary)] mt-0.5 uppercase">
-                            {q.input_type}
-                            {q.thickness_mm ? ` · ${q.thickness_mm}mm` : ""}
-                            {q.bend_count > 0 ? ` · ${q.bend_count} bend${q.bend_count > 1 ? "s" : ""}` : ""}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3"><StatusBadge status={q.status ?? "draft"} /></td>
-                        <td className="px-5 py-3 text-[var(--text-primary)] font-medium">
-                          {q.unit_price != null ? `£${Number(q.unit_price).toFixed(2)}` : "—"}
-                        </td>
-                        <td className="px-5 py-3 text-[var(--text-secondary)]">{q.quantity ?? 1}</td>
-                        <td className="px-5 py-3 text-[var(--text-primary)] font-medium">
-                          {q.total_price != null ? `£${Number(q.total_price).toFixed(2)}` : "—"}
-                        </td>
-                        <td className="px-5 py-3 text-[var(--text-secondary)] whitespace-nowrap">
-                          {q.created_at ? new Date(q.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <Link
-                            href={`/dashboard/quotes/${q.id}`}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md bg-[var(--bg-primary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent-primary)] transition-colors"
-                          >
-                            View
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        {/* Right: quotes */}
+        <div className="table-card">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--border-subtle)" }}>
+            <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Quote History</h2>
+            <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{totalQuotes} total</span>
           </div>
+
+          {!quotes || quotes.length === 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px 32px", textAlign: "center", gap: 12 }}>
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(255,255,255,0.04)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                </svg>
+              </div>
+              <div>
+                <p style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>No quotes yet</p>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--text-dim)" }}>Quotes saved in the Quoter will appear here once linked to this customer.</p>
+              </div>
+              <Link href="/dashboard/quoter" className="btn-primary" style={{ marginTop: 4 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+                Create a Quote
+              </Link>
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Part File</th>
+                    <th>Status</th>
+                    <th>Unit Price</th>
+                    <th>Qty</th>
+                    <th>Total</th>
+                    <th>Date</th>
+                    <th style={{ textAlign: "right" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {(quotes as any[]).map((q) => (
+                    <tr key={q.id}>
+                      <td>
+                        <div style={{ fontWeight: 500, color: "var(--text-primary)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13 }}>
+                          {q.filename}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2, display: "flex", gap: 6 }}>
+                          <span className="input-type-badge">{q.input_type}</span>
+                          {q.thickness_mm ? <span>{q.thickness_mm}mm</span> : null}
+                          {q.bend_count > 0 ? <span>{q.bend_count} bend{q.bend_count > 1 ? "s" : ""}</span> : null}
+                        </div>
+                      </td>
+                      <td><StatusBadge status={q.status ?? "draft"} /></td>
+                      <td className="td-price">{q.unit_price != null ? `£${Number(q.unit_price).toFixed(2)}` : "—"}</td>
+                      <td className="td-muted">{q.quantity ?? 1}</td>
+                      <td className="td-price">{q.total_price != null ? `£${Number(q.total_price).toFixed(2)}` : "—"}</td>
+                      <td className="td-date">
+                        {q.created_at ? new Date(q.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <Link href={`/dashboard/quotes/${q.id}`} className="btn-ghost-sm">
+                          View →
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
