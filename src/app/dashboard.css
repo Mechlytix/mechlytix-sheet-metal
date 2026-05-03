@@ -560,7 +560,6 @@
 /* â”€â”€ Page Container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .dash-page {
   padding: 28px 32px;
-  max-width: 1280px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -2751,6 +2750,66 @@
 .layer-intent-btn--cut.active { background: var(--brand-orange); }
 .layer-intent-btn--bend.active { background: #4a90e2; }
 .layer-intent-btn--ignore.active { background: #666; }
+
+.tier-manager {
+  display: flex;
+  flex-direction: column;
+}
+
+.tier-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.tier-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.tier-chip-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tier-chip-remove:hover {
+  color: #ff5050;
+}
+
+.tier-add-input {
+  width: 80px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: all 0.2s;
+}
+
+.tier-add-input:focus {
+  border-color: var(--brand-orange);
+  background: rgba(255, 102, 0, 0.05);
+}
 
 @media (max-width: 1200px) {
   .quoter-multi-layout {

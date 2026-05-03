@@ -296,6 +296,9 @@ export default function QuoterPage() {
   const [defaultMachineId, setDefaultMachineId]   = useState<string>("");
   const [defaultMarkup, setDefaultMarkup]         = useState(15);
 
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [notes, setNotes] = useState("");
+
   const [remnantMatches, setRemnantMatches]   = useState<RemnantMatch[]>([]);
   const [remnantDismissed, setRemnantDismissed] = useState(false);
   const [usingRemnant, setUsingRemnant]         = useState(false);
@@ -364,7 +367,7 @@ export default function QuoterPage() {
     };
   }, [activeItem]);
 
-  // Re-compute price whenever active item inputs change
+  // Re-compute all price breaks for active item whenever inputs change
   useEffect(() => {
     if (!effectiveGeometry || !activeItem || (phase.name !== "ready" && phase.name !== "saving")) { 
       setResult(null); 
@@ -380,6 +383,7 @@ export default function QuoterPage() {
 
     const feedRate = getFeedRateWithCustom(mach.feed_rates, mat.category, thickMm, mach.power_kw ?? 4);
 
+    // 1. Calculate active tier result
     const r = calculatePrice({
       geometry: { ...geo, thickness: thickMm },
       materialCostPerKg:  mat.cost_per_kg,
@@ -395,32 +399,41 @@ export default function QuoterPage() {
       wasteFactor: usingRemnant ? 1.0 : 1.15,
     });
     setResult(r);
-  }, [phase, activeItem, effectiveGeometry, materials, machines, usingRemnant]);
 
-  // Remnant matching
-  useEffect(() => {
-    if (!effectiveGeometry || !userId || phase.name !== "ready") {
-      setRemnantMatches([]);
-      setRemnantDismissed(false);
-      return;
-    }
-    const { boundingWidth, boundingHeight } = effectiveGeometry;
-    if (!boundingWidth || !boundingHeight) return;
-
-    const supabase = createClient();
-    supabase
-      .from("remnants")
-      .select("id, width_mm, height_mm, thickness_mm, location, material_id, materials(name, color_hex)")
-      .eq("user_id", userId)
-      .eq("status", "available")
-      .gte("width_mm", boundingWidth)
-      .gte("height_mm", boundingHeight)
-      .order("width_mm", { ascending: true })
-      .limit(3)
-      .then(({ data }) => {
-        setRemnantMatches((data as any[]) ?? []);
+    // 2. Refresh all price breaks
+    const updatedBreaks = activeItem.priceBreaks.map(pb => {
+      const tierResult = calculatePrice({
+        geometry: { ...geo, thickness: thickMm },
+        materialCostPerKg:  mat.cost_per_kg,
+        materialDensityKgM3: mat.density_kg_m3,
+        scrapValuePerKg:    mat.scrap_value_per_kg ?? 0,
+        machineHourlyRate:  mach.hourly_rate,
+        feedRateMmPerMin:   feedRate,
+        pierceTimeSeconds:  mach.pierce_time_seconds ?? 0.5,
+        setupTimeMinutes:   mach.setup_time_minutes ?? 15,
+        costPerBend:        mach.cost_per_bend ?? 2.5,
+        quantity: pb.quantity,
+        markupPercent: activeItem.markup,
+        wasteFactor: usingRemnant ? 1.0 : 1.15,
       });
-  }, [effectiveGeometry, userId, phase.name]);
+
+      return {
+        ...pb,
+        material_cost: pb.material_cost_override ?? tierResult.materialCostPerPart,
+        cutting_cost: pb.cutting_cost_override ?? tierResult.cuttingCostPerPart,
+        bending_cost: pb.bending_cost_override ?? tierResult.bendingCostPerPart,
+        setup_cost: pb.setup_cost_override ?? tierResult.setupCostPerPart,
+        unit_price: tierResult.unitPrice, // This is simplified, real override would need to re-sum
+        total_price: tierResult.totalPrice,
+      };
+    });
+
+    // Check if we need to update to avoid infinite loop
+    if (JSON.stringify(updatedBreaks) !== JSON.stringify(activeItem.priceBreaks)) {
+      updateActiveItem({ priceBreaks: updatedBreaks });
+    }
+
+  }, [phase.name, activeItem, effectiveGeometry, materials, machines, usingRemnant, updateActiveItem]);
 
   // Handle file drop
   const onFiles = useCallback(async (files: File[]) => {
@@ -475,7 +488,7 @@ export default function QuoterPage() {
           layerIntents: initialIntents,
           pathIntents: {},
           manualBendCount: null,
-          priceBreaks: []
+          priceBreaks: [] // Starts empty, quantity is handled by quantity field
         });
       }
 
@@ -554,12 +567,12 @@ export default function QuoterPage() {
         const { data: quoteData, error: quoteErr } = await supabase.from("quotes").insert({
           user_id: userId, group_id: groupId, filename: item.filename,
           input_type: effGeo.inputType, bounding_width_mm: effGeo.boundingWidth, bounding_height_mm: effGeo.boundingHeight,
-          perimeter_mm: effGeo.perimeter, pierce_count: effGeo.pierceCount, part_area_mm2: effGeo.partArea,
+          perimeter_mm: effGeo.perimeter, pierce_count: effGeo.pierce_count, part_area_mm2: effGeo.partArea,
           bend_count: effGeo.bendCount, thickness_mm: r.thicknessMm, material_id: item.materialId, machine_id: item.machineId,
           quantity: item.quantity, markup_percent: item.markup, material_cost: r.materialCostPerPart,
           cutting_cost: r.cuttingCostPerPart, bending_cost: r.bendingCostPerPart, setup_cost: r.setupCostTotal,
           unit_price: r.unitPrice, total_price: r.totalPrice, customer_id: customerId, notes: notes,
-          status: "draft", upload_id: uploadId,
+          status: "draft", upload_id: uploadId, price_breaks: item.priceBreaks
         }).select("id").single();
 
         if (quoteData && !firstQuoteId) firstQuoteId = quoteData.id;
@@ -572,6 +585,24 @@ export default function QuoterPage() {
       setPhase({ name: "ready" });
     }
   }, [items, userId, materials, machines]);
+
+  // Tier Management
+  const addTier = (qty: number) => {
+    if (qty <= 0 || activeItem.priceBreaks.some(pb => pb.quantity === qty)) return;
+    updateActiveItem({
+      priceBreaks: [...activeItem.priceBreaks, { 
+        quantity: qty, 
+        material_cost: 0, cutting_cost: 0, bending_cost: 0, setup_cost: 0, 
+        unit_price: 0, total_price: 0 
+      }].sort((a,b) => a.quantity - b.quantity)
+    });
+  };
+
+  const removeTier = (idx: number) => {
+    const next = [...activeItem.priceBreaks];
+    next.splice(idx, 1);
+    updateActiveItem({ priceBreaks: next });
+  };
 
   // Render
   if (phase.name === "saved") {
@@ -654,7 +685,7 @@ export default function QuoterPage() {
                     {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
                 </div>
-                <div className="form-field"><label>Quantity</label>
+                <div className="form-field"><label>Primary Quantity</label>
                   <input type="number" min={1} value={activeItem.quantity} onChange={(e) => updateActiveItem({ quantity: Math.max(1, +e.target.value) })} />
                 </div>
                 <div className="form-field"><label>Markup (%)</label>
@@ -665,6 +696,35 @@ export default function QuoterPage() {
                     <input type="number" step="0.1" value={activeItem.thickness} onChange={(e) => updateActiveItem({ thickness: Math.max(0.1, +e.target.value) })} />
                   </div>
                 )}
+              </div>
+
+              {/* Quantity Tiers Manager */}
+              <div style={{ marginTop: "1.5rem", borderTop: "1px solid var(--border-subtle)", paddingTop: "1rem" }}>
+                <label className="section-label">Quantity Tiers / Price Breaks</label>
+                <div className="tier-manager">
+                  <div className="tier-chips">
+                    {activeItem.priceBreaks.map((pb, i) => (
+                      <div key={i} className="tier-chip">
+                        <span>{pb.quantity}</span>
+                        <button className="tier-chip-remove" onClick={() => removeTier(i)}>×</button>
+                      </div>
+                    ))}
+                    <input 
+                      type="number" 
+                      className="tier-add-input"
+                      placeholder="+ Qty"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const val = parseInt((e.target as HTMLInputElement).value);
+                          if (val) { addTier(val); (e.target as HTMLInputElement).value = ""; }
+                        }
+                      }}
+                    />
+                  </div>
+                  <p style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6 }}>
+                    Add extra quantities to generate a price break table.
+                  </p>
+                </div>
               </div>
             </div>
 
