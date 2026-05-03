@@ -68,13 +68,34 @@ function CostInput({ value, onChange, onReset, isOverridden, prefix = "\u00A3", 
   value: number; onChange: (v: number) => void; onReset: () => void; isOverridden: boolean;
   prefix?: string; step?: number; min?: number;
 }) {
+  const [displayValue, setDisplayValue] = React.useState(value.toString());
+
+  // Sync internal state when prop changes externally (e.g. from recalculation)
+  React.useEffect(() => {
+    if (parseFloat(displayValue) !== value) {
+      setDisplayValue(value % 1 === 0 ? value.toString() : value.toFixed(2));
+    }
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setDisplayValue(raw);
+    const parsed = parseFloat(raw);
+    if (!isNaN(parsed)) {
+      onChange(parsed);
+    } else if (raw === "") {
+      onChange(0);
+    }
+  };
+
   return (
     <div className={`qd-inline-input-wrap ${isOverridden ? "qd-overridden" : ""}`}>
       {prefix && <span className="qd-inline-prefix">{prefix}</span>}
       <input type="number" className="qd-inline-input"
-        value={Math.round(value * 100) / 100}
+        value={displayValue}
         step={step} min={min}
-        onChange={e => onChange(+(parseFloat(e.target.value) || 0).toFixed(2))} />
+        onChange={handleChange}
+        onBlur={() => setDisplayValue(value % 1 === 0 ? value.toString() : value.toFixed(2))} />
       <div className="qd-input-meta">
         {isOverridden ? (
           <span className="qd-override-badge" title="Manual override active">override</span>
@@ -92,13 +113,33 @@ function CostInput({ value, onChange, onReset, isOverridden, prefix = "\u00A3", 
 function NumInput({ value, onChange, prefix, step = 0.01, min = 0 }: {
   value: number; onChange: (v: number) => void; prefix?: string; step?: number; min?: number;
 }) {
+  const [displayValue, setDisplayValue] = React.useState(value.toString());
+
+  React.useEffect(() => {
+    if (parseFloat(displayValue) !== value) {
+      setDisplayValue(value % 1 === 0 ? value.toString() : value.toFixed(2));
+    }
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setDisplayValue(raw);
+    const parsed = parseFloat(raw);
+    if (!isNaN(parsed)) {
+      onChange(parsed);
+    } else if (raw === "") {
+      onChange(0);
+    }
+  };
+
   return (
     <div className="qd-inline-input-wrap">
       {prefix && <span className="qd-inline-prefix">{prefix}</span>}
       <input type="number" className="qd-inline-input"
-        value={Math.round(value * 100) / 100}
+        value={displayValue}
         step={step} min={min}
-        onChange={e => onChange(+(parseFloat(e.target.value) || 0).toFixed(2))} />
+        onChange={handleChange}
+        onBlur={() => setDisplayValue(value % 1 === 0 ? value.toString() : value.toFixed(2))} />
     </div>
   );
 }
