@@ -496,7 +496,7 @@ export default function QuoterPage() {
           filename: sourceFile.name,
           storage_path: path,
           file_size_bytes: sourceFile.size,
-          file_type: sourceFile.type || `application/${ext}`,
+          file_type: ext === "stp" ? "step" : ext,
           status: "processed"
         }).select("id").single();
         if (dbUpload) uploadId = dbUpload.id;
