@@ -2282,6 +2282,54 @@
   padding: 4px 0;
 }
 
+/* ── Inline number inputs (edit mode) ───────────────────── */
+.qd-inline-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 2px 6px;
+  min-width: 90px;
+  transition: border-color 0.12s;
+}
+
+.qd-inline-input-wrap:focus-within {
+  border-color: var(--accent-primary);
+}
+
+.qd-inline-prefix {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.qd-inline-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.qd-inline-input::-webkit-outer-spin-button,
+.qd-inline-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.qd-layout--editing .breakdown-row {
+  align-items: center;
+}
+
 /* â”€â”€ Detail Grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .qd-detail-grid {
   display: grid;
