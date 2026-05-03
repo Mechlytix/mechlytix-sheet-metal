@@ -82,9 +82,9 @@ function CostInput({ value, onChange, onReset, isOverridden, prefix = "\u00A3", 
     setDisplayValue(raw);
     const parsed = parseFloat(raw);
     if (!isNaN(parsed)) {
-      onChange(parsed);
+      onChange(Math.max(min, parsed));
     } else if (raw === "") {
-      onChange(0);
+      onChange(min);
     }
   };
 
@@ -126,9 +126,9 @@ function NumInput({ value, onChange, prefix, step = 0.01, min = 0 }: {
     setDisplayValue(raw);
     const parsed = parseFloat(raw);
     if (!isNaN(parsed)) {
-      onChange(parsed);
+      onChange(Math.max(min, parsed));
     } else if (raw === "") {
-      onChange(0);
+      onChange(min);
     }
   };
 
@@ -463,6 +463,7 @@ export function QuoteDetailClient({
                         onChange={v => setCostOverrides(prev => ({ ...prev, material: v }))} 
                         onReset={() => resetOverride("material")}
                         isOverridden={costOverrides.material !== null}
+                        min={0}
                       />
                     </div>
                     <div className="breakdown-row">
@@ -472,6 +473,7 @@ export function QuoteDetailClient({
                         onChange={v => setCostOverrides(prev => ({ ...prev, cutting: v }))} 
                         onReset={() => resetOverride("cutting")}
                         isOverridden={costOverrides.cutting !== null}
+                        min={0}
                       />
                     </div>
                     <div className="breakdown-row">
@@ -481,6 +483,7 @@ export function QuoteDetailClient({
                         onChange={v => setCostOverrides(prev => ({ ...prev, bending: v }))} 
                         onReset={() => resetOverride("bending")}
                         isOverridden={costOverrides.bending !== null}
+                        min={0}
                       />
                     </div>
                     <div className="breakdown-row">
@@ -490,6 +493,7 @@ export function QuoteDetailClient({
                         onChange={v => setCostOverrides(prev => ({ ...prev, setup: v }))} 
                         onReset={() => resetOverride("setup")}
                         isOverridden={costOverrides.setup !== null}
+                        min={0}
                       />
                     </div>
                     <div className="breakdown-row net">
@@ -498,7 +502,7 @@ export function QuoteDetailClient({
                     </div>
                     <div className="breakdown-row markup">
                       <span className="breakdown-label">Markup</span>
-                      <NumInput value={markupPercent} onChange={setMarkupPercent} prefix="%" step={1} />
+                      <NumInput value={markupPercent} onChange={setMarkupPercent} prefix="%" step={1} min={0} />
                     </div>
                     <div className="breakdown-row">
                       <span className="breakdown-label">Quantity</span>
@@ -554,7 +558,7 @@ export function QuoteDetailClient({
                 </div>
                 <div className="qd-detail-item">
                   <span className="qd-detail-label">Thickness</span>
-                  {editing ? <NumInput value={thicknessMm} onChange={setThicknessMm} step={0.1} /> : <span className="qd-detail-value">{fmtMm(quote.thickness_mm)}</span>}
+                  {editing ? <NumInput value={thicknessMm} onChange={setThicknessMm} step={0.1} min={0} /> : <span className="qd-detail-value">{fmtMm(quote.thickness_mm)}</span>}
                 </div>
                 <div className="qd-detail-item">
                   <span className="qd-detail-label">Cut Length</span>
@@ -568,11 +572,11 @@ export function QuoteDetailClient({
                 </div>
                 <div className="qd-detail-item">
                   <span className="qd-detail-label">Pierces</span>
-                  {editing ? <NumInput value={pierceCount} onChange={v => setPierceCount(Math.max(0, Math.round(v)))} step={1} /> : <span className="qd-detail-value">{quote.pierce_count ?? 0}</span>}
+                  {editing ? <NumInput value={pierceCount} onChange={v => setPierceCount(Math.max(0, Math.round(v)))} step={1} min={0} /> : <span className="qd-detail-value">{quote.pierce_count ?? 0}</span>}
                 </div>
                 <div className="qd-detail-item">
                   <span className="qd-detail-label">Bends</span>
-                  {editing ? <NumInput value={bendCount} onChange={v => setBendCount(Math.max(0, Math.round(v)))} step={1} /> : <span className="qd-detail-value">{quote.bend_count ?? 0}</span>}
+                  {editing ? <NumInput value={bendCount} onChange={v => setBendCount(Math.max(0, Math.round(v)))} step={1} min={0} /> : <span className="qd-detail-value">{quote.bend_count ?? 0}</span>}
                 </div>
               </div>
             </div>
