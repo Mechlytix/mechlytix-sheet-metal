@@ -52,9 +52,7 @@ interface Props {
   machines: Machine[];
 }
 
-/* ─────────────────────────────────────────────────────────
-   Helpers
-   ───────────────────────────────────────────────────────── */
+/* ── Helpers ── */
 
 function fmt(n: number | null | undefined, prefix = "\u00A3", dp = 2) {
   if (n == null) return "\u2014";
@@ -63,6 +61,46 @@ function fmt(n: number | null | undefined, prefix = "\u00A3", dp = 2) {
 function fmtMm(n: number | null | undefined) {
   if (n == null) return "\u2014";
   return `${n.toFixed(1)} mm`;
+}
+
+/* ── Small input helper with override support ── */
+function CostInput({ value, onChange, onReset, isOverridden, prefix = "\u00A3", step = 0.01, min = 0 }: {
+  value: number; onChange: (v: number) => void; onReset: () => void; isOverridden: boolean;
+  prefix?: string; step?: number; min?: number;
+}) {
+  return (
+    <div className={`qd-inline-input-wrap ${isOverridden ? "qd-overridden" : ""}`}>
+      {prefix && <span className="qd-inline-prefix">{prefix}</span>}
+      <input type="number" className="qd-inline-input"
+        value={Math.round(value * 100) / 100}
+        step={step} min={min}
+        onChange={e => onChange(+(parseFloat(e.target.value) || 0).toFixed(2))} />
+      <div className="qd-input-meta">
+        {isOverridden ? (
+          <span className="qd-override-badge" title="Manual override active">override</span>
+        ) : (
+          <span className="qd-auto-badge">auto</span>
+        )}
+        {isOverridden && (
+          <button className="qd-reset-btn" onClick={onReset} title="Reset to calculated value">↺</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NumInput({ value, onChange, prefix, step = 0.01, min = 0 }: {
+  value: number; onChange: (v: number) => void; prefix?: string; step?: number; min?: number;
+}) {
+  return (
+    <div className="qd-inline-input-wrap">
+      {prefix && <span className="qd-inline-prefix">{prefix}</span>}
+      <input type="number" className="qd-inline-input"
+        value={Math.round(value * 100) / 100}
+        step={step} min={min}
+        onChange={e => onChange(+(parseFloat(e.target.value) || 0).toFixed(2))} />
+    </div>
+  );
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -238,45 +276,7 @@ export function QuoteDetailClient({
   const displayMat = editing ? materials.find(m => m.id === materialId) ?? mat : mat;
   const displayMach = editing ? machines.find(m => m.id === machineId) ?? mach : mach;
 
-  /* ── Small input helper with override support ── */
-  function CostInput({ value, onChange, onReset, isOverridden, prefix = "\u00A3", step = 0.01, min = 0 }: {
-    value: number; onChange: (v: number) => void; onReset: () => void; isOverridden: boolean;
-    prefix?: string; step?: number; min?: number;
-  }) {
-    return (
-      <div className={`qd-inline-input-wrap ${isOverridden ? "qd-overridden" : ""}`}>
-        {prefix && <span className="qd-inline-prefix">{prefix}</span>}
-        <input type="number" className="qd-inline-input"
-          value={Math.round(value * 100) / 100}
-          step={step} min={min}
-          onChange={e => onChange(+(parseFloat(e.target.value) || 0).toFixed(2))} />
-        <div className="qd-input-meta">
-          {isOverridden ? (
-            <span className="qd-override-badge" title="Manual override active">override</span>
-          ) : (
-            <span className="qd-auto-badge">auto</span>
-          )}
-          {isOverridden && (
-            <button className="qd-reset-btn" onClick={onReset} title="Reset to calculated value">↺</button>
-          )}
-        </div>
-      </div>
-    );
-  }
 
-  function NumInput({ value, onChange, prefix, step = 0.01, min = 0 }: {
-    value: number; onChange: (v: number) => void; prefix?: string; step?: number; min?: number;
-  }) {
-    return (
-      <div className="qd-inline-input-wrap">
-        {prefix && <span className="qd-inline-prefix">{prefix}</span>}
-        <input type="number" className="qd-inline-input"
-          value={Math.round(value * 100) / 100}
-          step={step} min={min}
-          onChange={e => onChange(+(parseFloat(e.target.value) || 0).toFixed(2))} />
-      </div>
-    );
-  }
 
   return (
     <>
