@@ -2383,6 +2383,31 @@
   color: var(--text-primary);
 }
 
+.qd-input-error {
+  border-color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.05) !important;
+  animation: qd-shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+.qd-error-tooltip {
+  font-size: 9px;
+  font-weight: 700;
+  color: #ef4444;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+@keyframes qd-shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-3px, 0, 0); }
+  40%, 60% { transform: translate3d(3px, 0, 0); }
+}
+
 .qd-layout--editing .breakdown-row {
   align-items: center;
 }

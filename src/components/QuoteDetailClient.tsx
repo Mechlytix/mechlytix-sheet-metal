@@ -68,12 +68,15 @@ function CostInput({ value, onChange, onReset, isOverridden, prefix = "\u00A3", 
   value: number; onChange: (v: number) => void; onReset: () => void; isOverridden: boolean;
   prefix?: string; step?: number; min?: number;
 }) {
-  const [displayValue, setDisplayValue] = React.useState(value.toString());
+  const [displayValue, setDisplayValue] = React.useState(value.toFixed(2));
+  const [hasError, setHasError] = React.useState(false);
 
   // Sync internal state when prop changes externally (e.g. from recalculation)
   React.useEffect(() => {
-    if (parseFloat(displayValue) !== value) {
-      setDisplayValue(value % 1 === 0 ? value.toString() : value.toFixed(2));
+    const roundedProp = Math.round(value * 100) / 100;
+    const currentDisplayNum = parseFloat(displayValue);
+    if (isNaN(currentDisplayNum) || Math.abs(currentDisplayNum - roundedProp) > 0.001) {
+      setDisplayValue(roundedProp.toFixed(2));
     }
   }, [value]);
 
@@ -81,28 +84,36 @@ function CostInput({ value, onChange, onReset, isOverridden, prefix = "\u00A3", 
     const raw = e.target.value;
     setDisplayValue(raw);
     const parsed = parseFloat(raw);
+    
     if (!isNaN(parsed)) {
-      onChange(Math.max(min, parsed));
+      if (parsed < min) {
+        setHasError(true);
+        setTimeout(() => setHasError(false), 1500);
+        onChange(min);
+      } else {
+        onChange(Math.round(parsed * 100) / 100);
+      }
     } else if (raw === "") {
       onChange(min);
     }
   };
 
   return (
-    <div className={`qd-inline-input-wrap ${isOverridden ? "qd-overridden" : ""}`}>
+    <div className={`qd-inline-input-wrap ${isOverridden ? "qd-overridden" : ""} ${hasError ? "qd-input-error" : ""}`}>
       {prefix && <span className="qd-inline-prefix">{prefix}</span>}
       <input type="number" className="qd-inline-input"
         value={displayValue}
         step={step} min={min}
         onChange={handleChange}
-        onBlur={() => setDisplayValue(value % 1 === 0 ? value.toString() : value.toFixed(2))} />
+        onBlur={() => setDisplayValue(value.toFixed(2))} />
       <div className="qd-input-meta">
-        {isOverridden ? (
+        {hasError && <span className="qd-error-tooltip">Min {min}</span>}
+        {!hasError && (isOverridden ? (
           <span className="qd-override-badge" title="Manual override active">override</span>
         ) : (
           <span className="qd-auto-badge">auto</span>
-        )}
-        {isOverridden && (
+        ))}
+        {isOverridden && !hasError && (
           <button className="qd-reset-btn" onClick={onReset} title="Reset to calculated value">↺</button>
         )}
       </div>
@@ -113,11 +124,14 @@ function CostInput({ value, onChange, onReset, isOverridden, prefix = "\u00A3", 
 function NumInput({ value, onChange, prefix, step = 0.01, min = 0 }: {
   value: number; onChange: (v: number) => void; prefix?: string; step?: number; min?: number;
 }) {
-  const [displayValue, setDisplayValue] = React.useState(value.toString());
+  const [displayValue, setDisplayValue] = React.useState(value.toFixed(2));
+  const [hasError, setHasError] = React.useState(false);
 
   React.useEffect(() => {
-    if (parseFloat(displayValue) !== value) {
-      setDisplayValue(value % 1 === 0 ? value.toString() : value.toFixed(2));
+    const roundedProp = Math.round(value * 100) / 100;
+    const currentDisplayNum = parseFloat(displayValue);
+    if (isNaN(currentDisplayNum) || Math.abs(currentDisplayNum - roundedProp) > 0.001) {
+      setDisplayValue(roundedProp.toFixed(2));
     }
   }, [value]);
 
@@ -125,21 +139,29 @@ function NumInput({ value, onChange, prefix, step = 0.01, min = 0 }: {
     const raw = e.target.value;
     setDisplayValue(raw);
     const parsed = parseFloat(raw);
+    
     if (!isNaN(parsed)) {
-      onChange(Math.max(min, parsed));
+      if (parsed < min) {
+        setHasError(true);
+        setTimeout(() => setHasError(false), 1500);
+        onChange(min);
+      } else {
+        onChange(Math.round(parsed * 100) / 100);
+      }
     } else if (raw === "") {
       onChange(min);
     }
   };
 
   return (
-    <div className="qd-inline-input-wrap">
+    <div className={`qd-inline-input-wrap ${hasError ? "qd-input-error" : ""}`}>
       {prefix && <span className="qd-inline-prefix">{prefix}</span>}
       <input type="number" className="qd-inline-input"
         value={displayValue}
         step={step} min={min}
         onChange={handleChange}
         onBlur={() => setDisplayValue(value % 1 === 0 ? value.toString() : value.toFixed(2))} />
+      {hasError && <div className="qd-input-meta"><span className="qd-error-tooltip">Min {min}</span></div>}
     </div>
   );
 }
