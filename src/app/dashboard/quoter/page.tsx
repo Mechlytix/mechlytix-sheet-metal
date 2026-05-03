@@ -419,12 +419,13 @@ export default function QuoterPage() {
 
       return {
         ...pb,
-        material_cost: pb.material_cost_override ?? tierResult.materialCostPerPart,
-        cutting_cost: pb.cutting_cost_override ?? tierResult.cuttingCostPerPart,
-        bending_cost: pb.bending_cost_override ?? tierResult.bendingCostPerPart,
-        setup_cost: pb.setup_cost_override ?? tierResult.setupCostPerPart,
-        unit_price: tierResult.unitPrice, // This is simplified, real override would need to re-sum
-        total_price: tierResult.totalPrice,
+        materialCostPerPart: pb.overrides.material ?? tierResult.materialCostPerPart,
+        cuttingCostPerPart: pb.overrides.cutting ?? tierResult.cuttingCostPerPart,
+        bendingCostPerPart: pb.overrides.bending ?? tierResult.bendingCostPerPart,
+        setupCostPerPart: pb.overrides.setup ?? tierResult.setupCostPerPart,
+        setupCostTotal: tierResult.setupCostTotal,
+        unitPrice: tierResult.unitPrice,
+        totalPrice: tierResult.totalPrice,
       };
     });
 
@@ -567,7 +568,7 @@ export default function QuoterPage() {
         const { data: quoteData, error: quoteErr } = await supabase.from("quotes").insert({
           user_id: userId, group_id: groupId, filename: item.filename,
           input_type: effGeo.inputType, bounding_width_mm: effGeo.boundingWidth, bounding_height_mm: effGeo.boundingHeight,
-          perimeter_mm: effGeo.perimeter, pierce_count: effGeo.pierce_count, part_area_mm2: effGeo.partArea,
+          perimeter_mm: effGeo.perimeter, pierce_count: effGeo.pierceCount, part_area_mm2: effGeo.partArea,
           bend_count: effGeo.bendCount, thickness_mm: r.thicknessMm, material_id: item.materialId, machine_id: item.machineId,
           quantity: item.quantity, markup_percent: item.markup, material_cost: r.materialCostPerPart,
           cutting_cost: r.cuttingCostPerPart, bending_cost: r.bendingCostPerPart, setup_cost: r.setupCostTotal,
@@ -592,8 +593,10 @@ export default function QuoterPage() {
     updateActiveItem({
       priceBreaks: [...activeItem.priceBreaks, { 
         quantity: qty, 
-        material_cost: 0, cutting_cost: 0, bending_cost: 0, setup_cost: 0, 
-        unit_price: 0, total_price: 0 
+        unitPrice: 0, totalPrice: 0,
+        materialCostPerPart: 0, cuttingCostPerPart: 0, bendingCostPerPart: 0, 
+        setupCostPerPart: 0, setupCostTotal: 0,
+        overrides: { material: null, cutting: null, bending: null, setup: null }
       }].sort((a,b) => a.quantity - b.quantity)
     });
   };
