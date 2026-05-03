@@ -115,3 +115,21 @@ export interface PricingResult {
   /** Notes / warnings */
   warnings: string[];
 }
+
+export interface PriceBreak {
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  materialCostPerPart: number;
+  cuttingCostPerPart: number;
+  bendingCostPerPart: number;
+  setupCostPerPart: number;
+  setupCostTotal: number;
+  /** Manual overrides for this specific break */
+  overrides: {
+    material: number | null;
+    cutting: number | null;
+    bending: number | null;
+    setup: number | null;
+  };
+}

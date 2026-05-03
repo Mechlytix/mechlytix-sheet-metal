@@ -13,7 +13,7 @@ import { DxfViewer } from "@/components/DxfViewer";
 import Link from "next/link";
 import { calculatePrice } from "@/lib/pricing/cost-model";
 import { getFeedRateWithCustom } from "@/lib/pricing/feed-rates";
-import type { PricingGeometry, DXFIntent, PricingResult } from "@/lib/pricing/types";
+import type { PricingGeometry, DXFIntent, PricingResult, PriceBreak } from "@/lib/pricing/types";
 
 /* ─────────────────────────────────────────────────────────
    Types
@@ -179,13 +179,28 @@ export function QuoteDetailClient({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // ── Editable fields ──
-  const [materialCost, setMaterialCost] = useState(quote.material_cost ?? 0);
-  const [cuttingCost, setCuttingCost] = useState(quote.cutting_cost ?? 0);
-  const [bendingCost, setBendingCost] = useState(quote.bending_cost ?? 0);
-  const [setupCost, setSetupCost] = useState(quote.setup_cost ?? 0);
+  // ── Price Breaks ──
+  const [priceBreaks, setPriceBreaks] = useState<PriceBreak[]>(() => {
+    if (quote.price_breaks && Array.isArray(quote.price_breaks) && quote.price_breaks.length > 0) {
+      return quote.price_breaks;
+    }
+    return [{
+      quantity: quote.quantity || 1,
+      unitPrice: quote.unit_price || 0,
+      totalPrice: quote.total_price || 0,
+      materialCostPerPart: quote.material_cost || 0,
+      cuttingCostPerPart: quote.cutting_cost || 0,
+      bendingCostPerPart: quote.bending_cost || 0,
+      setupCostPerPart: (quote.setup_cost || 0) / (quote.quantity || 1),
+      setupCostTotal: quote.setup_cost || 0,
+      overrides: { material: null, cutting: null, bending: null, setup: null }
+    }];
+  });
+
+  const [selectedBreakIndex, setSelectedBreakIndex] = useState(0);
+  const activeBreak = priceBreaks[selectedBreakIndex] || priceBreaks[0];
+
   const [markupPercent, setMarkupPercent] = useState(quote.markup_percent ?? 15);
-  const [quantity, setQuantity] = useState(quote.quantity ?? 1);
   const [thicknessMm, setThicknessMm] = useState(quote.thickness_mm ?? 0);
   const [pierceCount, setPierceCount] = useState(quote.pierce_count ?? 0);
   const [bendCount, setBendCount] = useState(quote.bend_count ?? 0);
@@ -200,17 +215,39 @@ export function QuoteDetailClient({
   const [layerIntents, setLayerIntents] = useState<Record<string, DXFIntent>>({});
   const [pathIntents, setPathIntents] = useState<Record<string, DXFIntent>>({});
 
-  // ── Cost Overrides ──
-  // Track which cost fields the user has manually edited
-  const [costOverrides, setCostOverrides] = useState<Record<string, number | null>>({
-    material: null,
-    cutting: null,
-    bending: null,
-    setup: null,
-  });
+  // Helper to clear an override for a specific break
+  const resetOverride = (field: keyof PriceBreak["overrides"]) => {
+    setPriceBreaks(prev => prev.map((b, i) => i === selectedBreakIndex ? {
+      ...b, overrides: { ...b.overrides, [field]: null }
+    } : b));
+  };
 
-  // Helper to clear an override
-  const resetOverride = (field: string) => setCostOverrides(prev => ({ ...prev, [field]: null }));
+  const updateOverride = (field: keyof PriceBreak["overrides"], value: number) => {
+    setPriceBreaks(prev => prev.map((b, i) => i === selectedBreakIndex ? {
+      ...b, overrides: { ...b.overrides, [field]: value }
+    } : b));
+  };
+
+  const handleAddBreak = () => {
+    const last = priceBreaks[priceBreaks.length - 1];
+    const newQty = last ? last.quantity * 2 : 10;
+    setPriceBreaks(prev => [...prev, {
+      ...activeBreak,
+      quantity: newQty,
+      overrides: { ...activeBreak.overrides }
+    }]);
+    setSelectedBreakIndex(priceBreaks.length);
+  };
+
+  const handleRemoveBreak = (idx: number) => {
+    if (priceBreaks.length <= 1) return;
+    setPriceBreaks(prev => prev.filter((_, i) => i !== idx));
+    if (selectedBreakIndex >= idx) setSelectedBreakIndex(Math.max(0, selectedBreakIndex - 1));
+  };
+
+  const updateBreakQty = (idx: number, qty: number) => {
+    setPriceBreaks(prev => prev.map((b, i) => i === idx ? { ...b, quantity: qty } : b));
+  };
 
   // ── Effective Geometry (updates from DXF layers) ──
   const effectiveGeometry = useMemo(() => {
@@ -239,9 +276,7 @@ export function QuoteDetailClient({
     };
   }, [dxfPreview, layerIntents, pathIntents]);
 
-  // ── Live Recalculation ──
-  const [autoResult, setAutoResult] = useState<PricingResult | null>(null);
-
+  // ── Live Recalculation (All Breaks) ──
   React.useEffect(() => {
     if (!editing || !effectiveGeometry) return;
 
@@ -252,35 +287,47 @@ export function QuoteDetailClient({
     const thick = thicknessMm || effectiveGeometry.thickness || 1;
     const feedRate = getFeedRateWithCustom(selectedMach.feed_rates, selectedMat.category, thick, selectedMach.power_kw ?? 4);
 
-    const r = calculatePrice({
-      geometry: { ...effectiveGeometry, thickness: thick },
-      materialCostPerKg: selectedMat.cost_per_kg,
-      materialDensityKgM3: selectedMat.density_kg_m3,
-      scrapValuePerKg: selectedMat.scrap_value_per_kg ?? 0,
-      machineHourlyRate: selectedMach.hourly_rate,
-      feedRateMmPerMin: feedRate,
-      pierceTimeSeconds: selectedMach.pierce_time_seconds ?? 0.5,
-      setupTimeMinutes: selectedMach.setup_time_minutes ?? 15,
-      costPerBend: selectedMach.cost_per_bend ?? 2.5,
-      quantity,
-      markupPercent,
-      wasteFactor: 1.15, // Default waste factor
+    // Calculate all breaks
+    const updatedBreaks = priceBreaks.map(pb => {
+      const r = calculatePrice({
+        geometry: { ...effectiveGeometry, thickness: thick },
+        materialCostPerKg: selectedMat.cost_per_kg,
+        materialDensityKgM3: selectedMat.density_kg_m3,
+        scrapValuePerKg: selectedMat.scrap_value_per_kg ?? 0,
+        machineHourlyRate: selectedMach.hourly_rate,
+        feedRateMmPerMin: feedRate,
+        pierceTimeSeconds: selectedMach.pierce_time_seconds ?? 0.5,
+        setupTimeMinutes: selectedMach.setup_time_minutes ?? 15,
+        costPerBend: selectedMach.cost_per_bend ?? 2.5,
+        quantity: pb.quantity,
+        markupPercent,
+        wasteFactor: 1.15,
+      });
+
+      return {
+        ...pb,
+        unitPrice: r.unitPrice,
+        totalPrice: r.totalPrice,
+        materialCostPerPart: r.materialCostPerPart,
+        cuttingCostPerPart: r.cuttingCostPerPart,
+        bendingCostPerPart: r.bendingCostPerPart,
+        setupCostPerPart: r.setupCostPerPart,
+        setupCostTotal: r.setupCostTotal,
+      };
     });
-    setAutoResult(r);
-  }, [editing, effectiveGeometry, materialId, machineId, thicknessMm, quantity, markupPercent, materials, machines]);
 
-  // ── Derived prices ──
-  const activeMaterialCost = costOverrides.material ?? (autoResult?.materialCostPerPart ?? materialCost);
-  const activeCuttingCost = costOverrides.cutting ?? (autoResult?.cuttingCostPerPart ?? cuttingCost);
-  const activeBendingCost = costOverrides.bending ?? (autoResult?.bendingCostPerPart ?? bendingCost);
-  const activeSetupCost = costOverrides.setup ?? (autoResult?.setupCostTotal ?? setupCost);
+    setPriceBreaks(updatedBreaks);
+  }, [editing, effectiveGeometry, materialId, machineId, thicknessMm, markupPercent, materials, machines]);
 
-  const netCost = useMemo(() =>
-    activeMaterialCost + activeCuttingCost + activeBendingCost + (activeSetupCost / Math.max(quantity, 1)),
-    [activeMaterialCost, activeCuttingCost, activeBendingCost, activeSetupCost, quantity]
-  );
-  const unitPrice = useMemo(() => netCost * (1 + markupPercent / 100), [netCost, markupPercent]);
-  const totalPrice = useMemo(() => unitPrice * quantity, [unitPrice, quantity]);
+  // Active costs (considering overrides for the selected break)
+  const activeMaterialCost = activeBreak.overrides.material ?? activeBreak.materialCostPerPart;
+  const activeCuttingCost  = activeBreak.overrides.cutting  ?? activeBreak.cuttingCostPerPart;
+  const activeBendingCost  = activeBreak.overrides.bending  ?? activeBreak.bendingCostPerPart;
+  const activeSetupCost    = activeBreak.overrides.setup    ?? activeBreak.setupCostTotal;
+  
+  const netCost = activeMaterialCost + activeCuttingCost + activeBendingCost + (activeSetupCost / Math.max(activeBreak.quantity, 1));
+  const unitPrice = netCost * (1 + markupPercent / 100);
+  const totalPrice = unitPrice * activeBreak.quantity;
   const grossMargin = unitPrice > 0 ? ((unitPrice - netCost) / unitPrice * 100) : null;
 
   // ── View-mode prices (from server data) ──
@@ -288,12 +335,19 @@ export function QuoteDetailClient({
   const viewGrossMargin = quote.unit_price ? ((quote.unit_price - viewNetCost) / quote.unit_price * 100) : null;
 
   function resetFields() {
-    setMaterialCost(quote.material_cost ?? 0);
-    setCuttingCost(quote.cutting_cost ?? 0);
-    setBendingCost(quote.bending_cost ?? 0);
-    setSetupCost(quote.setup_cost ?? 0);
+    setPriceBreaks(quote.price_breaks || [{
+      quantity: quote.quantity || 1,
+      unitPrice: quote.unit_price || 0,
+      totalPrice: quote.total_price || 0,
+      materialCostPerPart: quote.material_cost || 0,
+      cuttingCostPerPart: quote.cutting_cost || 0,
+      bendingCostPerPart: quote.bending_cost || 0,
+      setupCostPerPart: (quote.setup_cost || 0) / (quote.quantity || 1),
+      setupCostTotal: quote.setup_cost || 0,
+      overrides: { material: null, cutting: null, bending: null, setup: null }
+    }]);
+    setSelectedBreakIndex(0);
     setMarkupPercent(quote.markup_percent ?? 15);
-    setQuantity(quote.quantity ?? 1);
     setThicknessMm(quote.thickness_mm ?? 0);
     setPierceCount(quote.pierce_count ?? 0);
     setBendCount(quote.bend_count ?? 0);
@@ -303,7 +357,6 @@ export function QuoteDetailClient({
     setCustomerRef(quote.customer_ref ?? "");
     setExpiresAt(quote.expires_at ? quote.expires_at.slice(0, 10) : "");
     setNotes(quote.notes ?? "");
-    setCostOverrides({ material: null, cutting: null, bending: null, setup: null });
     setLayerIntents({});
     setPathIntents({});
   }
@@ -313,15 +366,28 @@ export function QuoteDetailClient({
   async function handleSave() {
     setSaving(true);
     const supabase = createClient();
+    
+    // Sync the active break overrides into the priceBreaks array before saving
+    // Actually they are already synced via setPriceBreaks in updateOverride.
+    
+    // We use the first price break as the "primary" for legacy flat columns
+    const primary = priceBreaks[0];
+
     const { error } = await supabase.from("quotes").update({
-      material_cost: activeMaterialCost, cutting_cost: activeCuttingCost,
-      bending_cost: activeBendingCost, setup_cost: activeSetupCost,
-      markup_percent: markupPercent, quantity: Math.max(1, quantity),
-      unit_price: +unitPrice.toFixed(2), total_price: +totalPrice.toFixed(2),
+      material_cost: primary.overrides.material ?? primary.materialCostPerPart,
+      cutting_cost: primary.overrides.cutting ?? primary.cuttingCostPerPart,
+      bending_cost: primary.overrides.bending ?? primary.bendingCostPerPart,
+      setup_cost: primary.overrides.setup ?? primary.setupCostTotal,
+      markup_percent: markupPercent,
+      quantity: primary.quantity,
+      unit_price: +(primary.unitPrice).toFixed(2),
+      total_price: +(primary.totalPrice).toFixed(2),
+      price_breaks: priceBreaks,
       thickness_mm: thicknessMm || (effectiveGeometry?.thickness ?? null),
       pierce_count: effectiveGeometry?.pierceCount ?? pierceCount,
       bend_count: effectiveGeometry?.bendCount ?? bendCount,
-      material_id: materialId || null, machine_id: machineId || null,
+      material_id: materialId || null,
+      machine_id: machineId || null,
       customer_id: customerId || null,
       customer_ref: customerRef.trim() || null,
       expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
@@ -459,7 +525,7 @@ export function QuoteDetailClient({
                     <span className="qd-per-part">/ part</span>
                   </div>
                   <p className="qd-total-line">
-                    Qty {editing ? quantity : (quote.quantity ?? 1)} {"\u00D7"} {fmt(editing ? unitPrice : quote.unit_price)} ={" "}
+                    Qty {editing ? activeBreak.quantity : (quote.quantity ?? 1)} {"\u00D7"} {fmt(editing ? unitPrice : quote.unit_price)} ={" "}
                     <strong>{fmt(editing ? totalPrice : quote.total_price)}</strong>
                   </p>
                 </div>
@@ -473,18 +539,41 @@ export function QuoteDetailClient({
                 </div>
               </div>
 
+              {/* Price Breaks Selection (Edit Mode) */}
+              {editing && (
+                <div className="qd-breaks-manager no-print">
+                  <p className="qd-section-subtitle">Quantity Tiers</p>
+                  <div className="qd-breaks-list">
+                    {priceBreaks.map((pb, idx) => (
+                      <div key={idx} className={`qd-break-item ${selectedBreakIndex === idx ? "active" : ""}`}>
+                        <button className="qd-break-select" onClick={() => setSelectedBreakIndex(idx)}>
+                          <span className="qty">{pb.quantity}</span>
+                          <span className="price">{fmt(pb.unitPrice)}</span>
+                        </button>
+                        {priceBreaks.length > 1 && (
+                          <button className="qd-break-remove" onClick={(e) => { e.stopPropagation(); handleRemoveBreak(idx); }}>✕</button>
+                        )}
+                      </div>
+                    ))}
+                    <button className="qd-add-break" onClick={handleAddBreak}>+ Tier</button>
+                  </div>
+                </div>
+              )}
+
               {/* Cost breakdown */}
               <div className="qd-breakdown">
-                <h3 className="qd-section-title">Cost Breakdown</h3>
+                <h3 className="qd-section-title">
+                  {editing ? `Costs for Qty ${activeBreak.quantity}` : "Cost Breakdown"}
+                </h3>
                 {editing ? (
                   <>
                     <div className="breakdown-row">
                       <span className="breakdown-label">Material</span>
                       <CostInput 
                         value={activeMaterialCost} 
-                        onChange={v => setCostOverrides(prev => ({ ...prev, material: v }))} 
+                        onChange={v => updateOverride("material", v)} 
                         onReset={() => resetOverride("material")}
-                        isOverridden={costOverrides.material !== null}
+                        isOverridden={activeBreak.overrides.material !== null}
                         min={0}
                       />
                     </div>
@@ -492,9 +581,9 @@ export function QuoteDetailClient({
                       <span className="breakdown-label">Cutting</span>
                       <CostInput 
                         value={activeCuttingCost} 
-                        onChange={v => setCostOverrides(prev => ({ ...prev, cutting: v }))} 
+                        onChange={v => updateOverride("cutting", v)} 
                         onReset={() => resetOverride("cutting")}
-                        isOverridden={costOverrides.cutting !== null}
+                        isOverridden={activeBreak.overrides.cutting !== null}
                         min={0}
                       />
                     </div>
@@ -502,9 +591,9 @@ export function QuoteDetailClient({
                       <span className="breakdown-label">Bending</span>
                       <CostInput 
                         value={activeBendingCost} 
-                        onChange={v => setCostOverrides(prev => ({ ...prev, bending: v }))} 
+                        onChange={v => updateOverride("bending", v)} 
                         onReset={() => resetOverride("bending")}
-                        isOverridden={costOverrides.bending !== null}
+                        isOverridden={activeBreak.overrides.bending !== null}
                         min={0}
                       />
                     </div>
@@ -512,9 +601,9 @@ export function QuoteDetailClient({
                       <span className="breakdown-label">Setup (total)</span>
                       <CostInput 
                         value={activeSetupCost} 
-                        onChange={v => setCostOverrides(prev => ({ ...prev, setup: v }))} 
+                        onChange={v => updateOverride("setup", v)} 
                         onReset={() => resetOverride("setup")}
-                        isOverridden={costOverrides.setup !== null}
+                        isOverridden={activeBreak.overrides.setup !== null}
                         min={0}
                       />
                     </div>
@@ -528,7 +617,11 @@ export function QuoteDetailClient({
                     </div>
                     <div className="breakdown-row">
                       <span className="breakdown-label">Quantity</span>
-                      <NumInput value={quantity} onChange={v => setQuantity(Math.max(1, Math.round(v)))} step={1} min={1} />
+                      <NumInput 
+                        value={activeBreak.quantity} 
+                        onChange={v => updateBreakQty(selectedBreakIndex, Math.max(1, Math.round(v)))} 
+                        step={1} min={1} 
+                      />
                     </div>
                     <div className="breakdown-row total-row">
                       <span className="breakdown-label">Unit Price</span>
@@ -564,6 +657,31 @@ export function QuoteDetailClient({
                   </>
                 )}
               </div>
+
+              {/* View Mode: Price breaks table */}
+              {!editing && quote.price_breaks && quote.price_breaks.length > 1 && (
+                <div className="qd-view-breaks">
+                  <h3 className="qd-section-title">Pricing Options</h3>
+                  <table className="qd-breaks-table">
+                    <thead>
+                      <tr>
+                        <th>Quantity</th>
+                        <th>Unit Price</th>
+                        <th>Total (ex. VAT)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quote.price_breaks.map((pb: any, i: number) => (
+                        <tr key={i} className={pb.quantity === quote.quantity ? "current" : ""}>
+                          <td>{pb.quantity}</td>
+                          <td>{fmt(pb.unitPrice)}</td>
+                          <td>{fmt(pb.totalPrice)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* ── Geometry ── */}
