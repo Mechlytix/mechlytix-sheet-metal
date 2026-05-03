@@ -127,16 +127,6 @@ export default async function QuoteDetailPage({ params }: Props) {
             )}
           </div>
           <div className="qd-header-actions">
-            <QuoteEditPanel
-              quoteId={quote.id}
-              userId={user.id}
-              initialCustomerId={(quote as Record<string, unknown>).customer_id as string | null}
-              initialCustomerRef={quote.customer_ref ?? null}
-              initialQuantity={quote.quantity ?? 1}
-              initialMarkup={quote.markup_percent ?? 15}
-              initialNotes={quote.notes ?? ""}
-              initialExpiresAt={quote.expires_at ?? null}
-            />
             <PdfPreviewButton quote={quote} profile={profile} mat={mat} mach={mach} brandColor={brandColor} customer={customer} />
             <PdfDownloadButton quote={quote} profile={profile} mat={mat} mach={mach} brandColor={brandColor} customer={customer} />
           </div>
@@ -280,38 +270,20 @@ export default async function QuoteDetailPage({ params }: Props) {
               />
             </div>
 
-            {/* Customer */}
-            <div className="qd-section-card">
-              <h3 className="qd-section-title">Customer</h3>
-              <div className="qd-detail-list">
-                <div className="qd-detail-row">
-                  <span className="qd-dl-label">Name</span>
-                  <span className="qd-dl-value">{quote.customer_name ?? "—"}</span>
-                </div>
-                <div className="qd-detail-row">
-                  <span className="qd-dl-label">Email</span>
-                  <span className="qd-dl-value">
-                    {quote.customer_email
-                      ? <a href={`mailto:${quote.customer_email}`} className="qd-email-link">{quote.customer_email}</a>
-                      : "—"}
-                  </span>
-                </div>
-                <div className="qd-detail-row">
-                  <span className="qd-dl-label">Reference</span>
-                  <span className="qd-dl-value">{quote.customer_ref ?? "—"}</span>
-                </div>
-                <div className="qd-detail-row">
-                  <span className="qd-dl-label">Quantity</span>
-                  <span className="qd-dl-value">{quote.quantity ?? 1}</span>
-                </div>
-                {expiresDate && (
-                  <div className="qd-detail-row">
-                    <span className="qd-dl-label">Expires</span>
-                    <span className="qd-dl-value">{expiresDate}</span>
-                  </div>
-                )}
-              </div>
-            </div>
+            {/* Customer + Notes — inline editable */}
+            <QuoteEditPanel
+              quoteId={quote.id}
+              userId={user.id}
+              initialCustomerId={(quote as Record<string, unknown>).customer_id as string | null}
+              initialCustomerRef={quote.customer_ref ?? null}
+              initialQuantity={quote.quantity ?? 1}
+              initialMarkup={quote.markup_percent ?? 15}
+              initialNotes={quote.notes ?? ""}
+              initialExpiresAt={quote.expires_at ?? null}
+              customerName={quote.customer_name}
+              customerEmail={quote.customer_email}
+              expiresDate={expiresDate}
+            />
 
             {/* Material + Machine */}
             <div className="qd-section-card">
@@ -328,11 +300,11 @@ export default async function QuoteDetailPage({ params }: Props) {
                     </div>
                     <div className="qd-detail-row">
                       <span className="qd-dl-label">Cost/kg</span>
-                      <span className="qd-dl-value">£{mat.cost_per_kg?.toFixed(2) ?? "—"}</span>
+                      <span className="qd-dl-value">{"\u00A3"}{mat.cost_per_kg?.toFixed(2) ?? "\u2014"}</span>
                     </div>
                     <div className="qd-detail-row">
                       <span className="qd-dl-label">Density</span>
-                      <span className="qd-dl-value">{mat.density_kg_m3?.toLocaleString()} kg/m³</span>
+                      <span className="qd-dl-value">{mat.density_kg_m3?.toLocaleString()} kg/m{"\u00B3"}</span>
                     </div>
                   </>
                 )}
@@ -344,20 +316,12 @@ export default async function QuoteDetailPage({ params }: Props) {
                     </div>
                     <div className="qd-detail-row">
                       <span className="qd-dl-label">Rate</span>
-                      <span className="qd-dl-value">£{mach.hourly_rate?.toFixed(0) ?? "—"}/hr</span>
+                      <span className="qd-dl-value">{"\u00A3"}{mach.hourly_rate?.toFixed(0) ?? "\u2014"}/hr</span>
                     </div>
                   </>
                 )}
               </div>
             </div>
-
-            {/* Notes */}
-            {quote.notes && (
-              <div className="qd-section-card">
-                <h3 className="qd-section-title">Notes</h3>
-                <p className="qd-notes-text">{quote.notes}</p>
-              </div>
-            )}
 
             {/* Share Link */}
             <div className="qd-section-card no-print">

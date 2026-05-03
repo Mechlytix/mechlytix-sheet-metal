@@ -2217,6 +2217,71 @@
   margin: 0;
 }
 
+/* ── Inline Edit Styles ─────────────────────────────────── */
+.qd-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.qd-edit-trigger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+  font-family: var(--font-sans);
+}
+
+.qd-edit-trigger:hover {
+  color: var(--accent-primary);
+  background: rgba(255, 102, 0, 0.06);
+  border-color: rgba(255, 102, 0, 0.2);
+}
+
+.qd-section-card.qd-editing {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px rgba(255, 102, 0, 0.1), 0 0 16px rgba(255, 102, 0, 0.06);
+}
+
+.qd-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.qd-notes-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  resize: vertical;
+  min-height: 60px;
+  transition: border-color 0.12s;
+}
+
+.qd-notes-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.qd-edit-actions {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+}
+
 /* â”€â”€ Detail Grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .qd-detail-grid {
   display: grid;
