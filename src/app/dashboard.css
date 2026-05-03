@@ -2330,6 +2330,59 @@
   margin: 0;
 }
 
+.qd-input-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.qd-auto-badge,
+.qd-override-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.qd-auto-badge {
+  color: var(--text-dim);
+  background: rgba(128,128,128,0.1);
+}
+
+.qd-override-badge {
+  color: #fff;
+  background: var(--accent-primary);
+}
+
+.qd-overridden {
+  border-color: var(--accent-primary);
+  background: rgba(255, 102, 0, 0.03);
+}
+
+.qd-reset-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+}
+
+.qd-reset-btn:hover {
+  background: rgba(128,128,128,0.1);
+  color: var(--text-primary);
+}
+
 .qd-layout--editing .breakdown-row {
   align-items: center;
 }

@@ -26,8 +26,8 @@ export default async function QuoteDetailPage({ params }: Props) {
     .from("quotes")
     .select(`
       *,
-      materials ( id, name, grade, category, color_hex, cost_per_kg, density_kg_m3 ),
-      machine_profiles:machine_id ( id, name, machine_type, hourly_rate, power_kw ),
+      materials ( id, name, grade, category, color_hex, cost_per_kg, density_kg_m3, scrap_value_per_kg ),
+      machine_profiles:machine_id ( id, name, machine_type, hourly_rate, power_kw, feed_rates, pierce_time_seconds, setup_time_minutes, cost_per_bend ),
       quote_attachments ( id, filename, created_at, uploads ( storage_path, file_size_bytes ) ),
       uploads:upload_id ( storage_path )
     `)
@@ -62,14 +62,14 @@ export default async function QuoteDetailPage({ params }: Props) {
   // Fetch all materials & machines for edit dropdowns
   const { data: materials } = await supabase
     .from("materials")
-    .select("id, name, grade, category, color_hex, cost_per_kg, density_kg_m3")
+    .select("id, name, grade, category, color_hex, cost_per_kg, density_kg_m3, scrap_value_per_kg")
     .or(`user_id.eq.${user.id},is_system.eq.true`)
     .eq("is_active", true)
     .order("name");
 
   const { data: machines } = await supabase
     .from("machine_profiles")
-    .select("id, name, machine_type, hourly_rate, power_kw")
+    .select("id, name, machine_type, hourly_rate, power_kw, feed_rates, pierce_time_seconds, setup_time_minutes, cost_per_bend")
     .or(`user_id.eq.${user.id},is_system.eq.true`)
     .order("name");
 

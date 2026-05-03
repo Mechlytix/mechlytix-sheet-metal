@@ -11,7 +11,9 @@ import { PdfPreviewButton } from "@/components/PdfPreviewButton";
 import { QuoteAttachments } from "@/components/QuoteAttachments";
 import { DxfViewer } from "@/components/DxfViewer";
 import Link from "next/link";
-import type { PricingGeometry, DXFIntent } from "@/lib/pricing/types";
+import { calculatePrice } from "@/lib/pricing/cost-model";
+import { getFeedRateWithCustom } from "@/lib/pricing/feed-rates";
+import type { PricingGeometry, DXFIntent, PricingResult } from "@/lib/pricing/types";
 
 /* ─────────────────────────────────────────────────────────
    Types
@@ -20,11 +22,16 @@ import type { PricingGeometry, DXFIntent } from "@/lib/pricing/types";
 interface Material {
   id: string; name: string; grade: string | null; category: string;
   color_hex: string | null; cost_per_kg: number; density_kg_m3: number;
+  scrap_value_per_kg: number;
 }
 
 interface Machine {
   id: string; name: string; machine_type: string | null;
   hourly_rate: number; power_kw: number | null;
+  feed_rates: any;
+  pierce_time_seconds: number;
+  setup_time_minutes: number;
+  cost_per_bend: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,10 +99,84 @@ export function QuoteDetailClient({
   const [layerIntents, setLayerIntents] = useState<Record<string, DXFIntent>>({});
   const [pathIntents, setPathIntents] = useState<Record<string, DXFIntent>>({});
 
+  // ── Cost Overrides ──
+  // Track which cost fields the user has manually edited
+  const [costOverrides, setCostOverrides] = useState<Record<string, number | null>>({
+    material: null,
+    cutting: null,
+    bending: null,
+    setup: null,
+  });
+
+  // Helper to clear an override
+  const resetOverride = (field: string) => setCostOverrides(prev => ({ ...prev, [field]: null }));
+
+  // ── Effective Geometry (updates from DXF layers) ──
+  const effectiveGeometry = useMemo(() => {
+    if (!dxfPreview) return null;
+    if (dxfPreview.inputType !== "dxf" || !dxfPreview.dxfData) return dxfPreview;
+
+    let newPerimeter = 0;
+    let newPierceCount = 0;
+    let autoBendCount = 0;
+
+    dxfPreview.dxfData.paths.forEach(p => {
+      const intent = pathIntents[p.id] || layerIntents[p.layer] || "cut";
+      if (intent === "cut") {
+        newPerimeter += p.length;
+        newPierceCount++;
+      } else if (intent === "bend") {
+        autoBendCount++;
+      }
+    });
+
+    return {
+      ...dxfPreview,
+      perimeter: newPerimeter,
+      pierceCount: newPierceCount,
+      bendCount: autoBendCount,
+    };
+  }, [dxfPreview, layerIntents, pathIntents]);
+
+  // ── Live Recalculation ──
+  const [autoResult, setAutoResult] = useState<PricingResult | null>(null);
+
+  React.useEffect(() => {
+    if (!editing || !effectiveGeometry) return;
+
+    const selectedMat = materials.find(m => m.id === materialId);
+    const selectedMach = machines.find(m => m.id === machineId);
+    if (!selectedMat || !selectedMach) return;
+
+    const thick = thicknessMm || effectiveGeometry.thickness || 1;
+    const feedRate = getFeedRateWithCustom(selectedMach.feed_rates, selectedMat.category, thick, selectedMach.power_kw ?? 4);
+
+    const r = calculatePrice({
+      geometry: { ...effectiveGeometry, thickness: thick },
+      materialCostPerKg: selectedMat.cost_per_kg,
+      materialDensityKgM3: selectedMat.density_kg_m3,
+      scrapValuePerKg: selectedMat.scrap_value_per_kg ?? 0,
+      machineHourlyRate: selectedMach.hourly_rate,
+      feedRateMmPerMin: feedRate,
+      pierceTimeSeconds: selectedMach.pierce_time_seconds ?? 0.5,
+      setupTimeMinutes: selectedMach.setup_time_minutes ?? 15,
+      costPerBend: selectedMach.cost_per_bend ?? 2.5,
+      quantity,
+      markupPercent,
+      wasteFactor: 1.15, // Default waste factor
+    });
+    setAutoResult(r);
+  }, [editing, effectiveGeometry, materialId, machineId, thicknessMm, quantity, markupPercent, materials, machines]);
+
   // ── Derived prices ──
+  const activeMaterialCost = costOverrides.material ?? (autoResult?.materialCostPerPart ?? materialCost);
+  const activeCuttingCost = costOverrides.cutting ?? (autoResult?.cuttingCostPerPart ?? cuttingCost);
+  const activeBendingCost = costOverrides.bending ?? (autoResult?.bendingCostPerPart ?? bendingCost);
+  const activeSetupCost = costOverrides.setup ?? (autoResult?.setupCostTotal ?? setupCost);
+
   const netCost = useMemo(() =>
-    materialCost + cuttingCost + bendingCost + (setupCost / Math.max(quantity, 1)),
-    [materialCost, cuttingCost, bendingCost, setupCost, quantity]
+    activeMaterialCost + activeCuttingCost + activeBendingCost + (activeSetupCost / Math.max(quantity, 1)),
+    [activeMaterialCost, activeCuttingCost, activeBendingCost, activeSetupCost, quantity]
   );
   const unitPrice = useMemo(() => netCost * (1 + markupPercent / 100), [netCost, markupPercent]);
   const totalPrice = useMemo(() => unitPrice * quantity, [unitPrice, quantity]);
@@ -121,6 +202,9 @@ export function QuoteDetailClient({
     setCustomerRef(quote.customer_ref ?? "");
     setExpiresAt(quote.expires_at ? quote.expires_at.slice(0, 10) : "");
     setNotes(quote.notes ?? "");
+    setCostOverrides({ material: null, cutting: null, bending: null, setup: null });
+    setLayerIntents({});
+    setPathIntents({});
   }
 
   function handleCancel() { resetFields(); setEditing(false); }
@@ -129,12 +213,13 @@ export function QuoteDetailClient({
     setSaving(true);
     const supabase = createClient();
     const { error } = await supabase.from("quotes").update({
-      material_cost: materialCost, cutting_cost: cuttingCost,
-      bending_cost: bendingCost, setup_cost: setupCost,
+      material_cost: activeMaterialCost, cutting_cost: activeCuttingCost,
+      bending_cost: activeBendingCost, setup_cost: activeSetupCost,
       markup_percent: markupPercent, quantity: Math.max(1, quantity),
       unit_price: +unitPrice.toFixed(2), total_price: +totalPrice.toFixed(2),
-      thickness_mm: thicknessMm || null,
-      pierce_count: pierceCount, bend_count: bendCount,
+      thickness_mm: thicknessMm || (effectiveGeometry?.thickness ?? null),
+      pierce_count: effectiveGeometry?.pierceCount ?? pierceCount,
+      bend_count: effectiveGeometry?.bendCount ?? bendCount,
       material_id: materialId || null, machine_id: machineId || null,
       customer_id: customerId || null,
       customer_ref: customerRef.trim() || null,
@@ -153,7 +238,32 @@ export function QuoteDetailClient({
   const displayMat = editing ? materials.find(m => m.id === materialId) ?? mat : mat;
   const displayMach = editing ? machines.find(m => m.id === machineId) ?? mach : mach;
 
-  /* ── Small input helper ── */
+  /* ── Small input helper with override support ── */
+  function CostInput({ value, onChange, onReset, isOverridden, prefix = "\u00A3", step = 0.01, min = 0 }: {
+    value: number; onChange: (v: number) => void; onReset: () => void; isOverridden: boolean;
+    prefix?: string; step?: number; min?: number;
+  }) {
+    return (
+      <div className={`qd-inline-input-wrap ${isOverridden ? "qd-overridden" : ""}`}>
+        {prefix && <span className="qd-inline-prefix">{prefix}</span>}
+        <input type="number" className="qd-inline-input"
+          value={Math.round(value * 100) / 100}
+          step={step} min={min}
+          onChange={e => onChange(+(parseFloat(e.target.value) || 0).toFixed(2))} />
+        <div className="qd-input-meta">
+          {isOverridden ? (
+            <span className="qd-override-badge" title="Manual override active">override</span>
+          ) : (
+            <span className="qd-auto-badge">auto</span>
+          )}
+          {isOverridden && (
+            <button className="qd-reset-btn" onClick={onReset} title="Reset to calculated value">↺</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   function NumInput({ value, onChange, prefix, step = 0.01, min = 0 }: {
     value: number; onChange: (v: number) => void; prefix?: string; step?: number; min?: number;
   }) {
@@ -224,56 +334,58 @@ export function QuoteDetailClient({
           </div>
         </div>
 
-        {/* ── DXF Preview (full width, above grid) ── */}
-        {dxfPreview && (
-          <div className="qd-section-card no-print">
-            <h3 className="qd-section-title">Interactive Preview</h3>
-            <div style={{ height: 450, width: "100%" }}>
-              <DxfViewer
-                geometry={dxfPreview}
-                layerIntents={layerIntents}
-                pathIntents={pathIntents}
-                onPathClick={editing ? (id, currentIntent) => {
-                  const next: DXFIntent = currentIntent === "cut" ? "bend" : currentIntent === "bend" ? "ignore" : "cut";
-                  setPathIntents(prev => ({ ...prev, [id]: next }));
-                } : undefined}
-              />
-            </div>
 
-            {/* Layer toggles — only in edit mode */}
-            {editing && dxfPreview.dxfData && dxfPreview.dxfData.layers.length > 0 && (
-              <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-                <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>DXF Layers</p>
-                <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "-2px 0 4px" }}>Map layers to operations, or click lines on the drawing.</p>
-                {dxfPreview.dxfData.layers.map(layer => {
-                  const currentIntent = layerIntents[layer.name] || "cut";
-                  return (
-                    <div key={layer.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 6, background: "rgba(128,128,128,0.06)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", marginRight: 8 }}>
-                        <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: layer.color }} />
-                        <span style={{ fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{layer.name}</span>
-                        <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>({layer.entityCount})</span>
-                      </div>
-                      <div className="layer-intent-toggle">
-                        {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
-                          <button
-                            key={intent}
-                            className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
-                            onClick={() => setLayerIntents(prev => ({ ...prev, [layer.name]: intent }))}
-                          >{intent}</button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
 
         <div className={`qd-layout ${editing ? "qd-layout--editing" : ""}`}>
           {/* ══ Left column ══ */}
           <div className="qd-left">
+            {/* ── DXF Preview (moved here) ── */}
+            {dxfPreview && (
+              <div className="qd-section-card no-print">
+                <h3 className="qd-section-title">Interactive Preview</h3>
+                <div style={{ height: 550, width: "100%" }}>
+                  <DxfViewer
+                    geometry={effectiveGeometry || dxfPreview}
+                    layerIntents={layerIntents}
+                    pathIntents={pathIntents}
+                    onPathClick={editing ? (id, currentIntent) => {
+                      const next: DXFIntent = currentIntent === "cut" ? "bend" : currentIntent === "bend" ? "ignore" : "cut";
+                      setPathIntents(prev => ({ ...prev, [id]: next }));
+                    } : undefined}
+                  />
+                </div>
+
+                {/* Layer toggles — only in edit mode */}
+                {editing && dxfPreview.dxfData && dxfPreview.dxfData.layers.length > 0 && (
+                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                    <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>DXF Layers</p>
+                    <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "-2px 0 4px" }}>Map layers to operations, or click lines on the drawing.</p>
+                    {dxfPreview.dxfData.layers.map(layer => {
+                      const currentIntent = layerIntents[layer.name] || "cut";
+                      return (
+                        <div key={layer.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 6, background: "rgba(128,128,128,0.06)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", marginRight: 8 }}>
+                            <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: layer.color }} />
+                            <span style={{ fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{layer.name}</span>
+                            <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>({layer.entityCount})</span>
+                          </div>
+                          <div className="layer-intent-toggle">
+                            {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
+                              <button
+                                key={intent}
+                                className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
+                                onClick={() => setLayerIntents(prev => ({ ...prev, [layer.name]: intent }))}
+                              >{intent}</button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── Price card ── */}
             <div className={`qd-price-card ${editing ? "qd-editing" : ""}`}>
               <div className="qd-price-header">
@@ -303,10 +415,42 @@ export function QuoteDetailClient({
                 <h3 className="qd-section-title">Cost Breakdown</h3>
                 {editing ? (
                   <>
-                    <div className="breakdown-row"><span className="breakdown-label">Material</span><NumInput value={materialCost} onChange={setMaterialCost} prefix={"\u00A3"} /></div>
-                    <div className="breakdown-row"><span className="breakdown-label">Cutting</span><NumInput value={cuttingCost} onChange={setCuttingCost} prefix={"\u00A3"} /></div>
-                    <div className="breakdown-row"><span className="breakdown-label">Bending</span><NumInput value={bendingCost} onChange={setBendingCost} prefix={"\u00A3"} /></div>
-                    <div className="breakdown-row"><span className="breakdown-label">Setup (total)</span><NumInput value={setupCost} onChange={setSetupCost} prefix={"\u00A3"} /></div>
+                    <div className="breakdown-row">
+                      <span className="breakdown-label">Material</span>
+                      <CostInput 
+                        value={activeMaterialCost} 
+                        onChange={v => setCostOverrides(prev => ({ ...prev, material: v }))} 
+                        onReset={() => resetOverride("material")}
+                        isOverridden={costOverrides.material !== null}
+                      />
+                    </div>
+                    <div className="breakdown-row">
+                      <span className="breakdown-label">Cutting</span>
+                      <CostInput 
+                        value={activeCuttingCost} 
+                        onChange={v => setCostOverrides(prev => ({ ...prev, cutting: v }))} 
+                        onReset={() => resetOverride("cutting")}
+                        isOverridden={costOverrides.cutting !== null}
+                      />
+                    </div>
+                    <div className="breakdown-row">
+                      <span className="breakdown-label">Bending</span>
+                      <CostInput 
+                        value={activeBendingCost} 
+                        onChange={v => setCostOverrides(prev => ({ ...prev, bending: v }))} 
+                        onReset={() => resetOverride("bending")}
+                        isOverridden={costOverrides.bending !== null}
+                      />
+                    </div>
+                    <div className="breakdown-row">
+                      <span className="breakdown-label">Setup (total)</span>
+                      <CostInput 
+                        value={activeSetupCost} 
+                        onChange={v => setCostOverrides(prev => ({ ...prev, setup: v }))} 
+                        onReset={() => resetOverride("setup")}
+                        isOverridden={costOverrides.setup !== null}
+                      />
+                    </div>
                     <div className="breakdown-row net">
                       <span className="breakdown-label">Net cost (per part)</span>
                       <span className="breakdown-value">{fmt(netCost)}</span>
