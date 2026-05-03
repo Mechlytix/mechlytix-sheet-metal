@@ -16,7 +16,7 @@ interface NavItem {
 
 const PRIMARY_NAV: NavItem[] = [
   { label: "Overview",    href: "/dashboard",            icon: "grid" },
-  { label: "Quoter",      href: "/dashboard/quoter",     icon: "zap",    badge: "NEW" },
+  { label: "Quoter",      href: "/dashboard/quoter",     icon: "zap" },
   { label: "Unfolder",    href: "/dashboard/unfolder",   icon: "layers" },
   { label: "Quotes",      href: "/dashboard/quotes",     icon: "file-text" },
   { label: "Customers",   href: "/dashboard/customers",  icon: "users" },

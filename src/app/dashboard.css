@@ -2115,9 +2115,13 @@
 
 .qd-header-actions { display: flex; gap: 10px; }
 
+.quote-detail-page.dash-page {
+  max-width: none;
+}
+
 .qd-layout {
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr 380px;
   gap: 20px;
   align-items: start;
 }

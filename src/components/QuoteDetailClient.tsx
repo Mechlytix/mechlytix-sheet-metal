@@ -224,6 +224,53 @@ export function QuoteDetailClient({
           </div>
         </div>
 
+        {/* ── DXF Preview (full width, above grid) ── */}
+        {dxfPreview && (
+          <div className="qd-section-card no-print">
+            <h3 className="qd-section-title">Interactive Preview</h3>
+            <div style={{ height: 450, width: "100%" }}>
+              <DxfViewer
+                geometry={dxfPreview}
+                layerIntents={layerIntents}
+                pathIntents={pathIntents}
+                onPathClick={editing ? (id, currentIntent) => {
+                  const next: DXFIntent = currentIntent === "cut" ? "bend" : currentIntent === "bend" ? "ignore" : "cut";
+                  setPathIntents(prev => ({ ...prev, [id]: next }));
+                } : undefined}
+              />
+            </div>
+
+            {/* Layer toggles — only in edit mode */}
+            {editing && dxfPreview.dxfData && dxfPreview.dxfData.layers.length > 0 && (
+              <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>DXF Layers</p>
+                <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "-2px 0 4px" }}>Map layers to operations, or click lines on the drawing.</p>
+                {dxfPreview.dxfData.layers.map(layer => {
+                  const currentIntent = layerIntents[layer.name] || "cut";
+                  return (
+                    <div key={layer.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 6, background: "rgba(128,128,128,0.06)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", marginRight: 8 }}>
+                        <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: layer.color }} />
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{layer.name}</span>
+                        <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>({layer.entityCount})</span>
+                      </div>
+                      <div className="layer-intent-toggle">
+                        {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
+                          <button
+                            key={intent}
+                            className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
+                            onClick={() => setLayerIntents(prev => ({ ...prev, [layer.name]: intent }))}
+                          >{intent}</button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className={`qd-layout ${editing ? "qd-layout--editing" : ""}`}>
           {/* ══ Left column ══ */}
           <div className="qd-left">
@@ -344,53 +391,6 @@ export function QuoteDetailClient({
                 </div>
               </div>
             </div>
-
-            {/* ── DXF Preview + Layer Toggles ── */}
-            {dxfPreview && (
-              <div className="qd-section-card no-print">
-                <h3 className="qd-section-title">Interactive Preview</h3>
-                <div style={{ height: 400, width: "100%" }}>
-                  <DxfViewer
-                    geometry={dxfPreview}
-                    layerIntents={layerIntents}
-                    pathIntents={pathIntents}
-                    onPathClick={(id, currentIntent) => {
-                      const next: DXFIntent = currentIntent === "cut" ? "bend" : currentIntent === "bend" ? "ignore" : "cut";
-                      setPathIntents(prev => ({ ...prev, [id]: next }));
-                    }}
-                  />
-                </div>
-
-                {/* Layer toggles */}
-                {dxfPreview.dxfData && dxfPreview.dxfData.layers.length > 0 && (
-                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-                    <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>DXF Layers</p>
-                    <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "-2px 0 4px" }}>Map layers to operations, or click lines on the drawing.</p>
-                    {dxfPreview.dxfData.layers.map(layer => {
-                      const currentIntent = layerIntents[layer.name] || "cut";
-                      return (
-                        <div key={layer.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 6, background: "rgba(128,128,128,0.06)" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", marginRight: 8 }}>
-                            <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: layer.color }} />
-                            <span style={{ fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{layer.name}</span>
-                            <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>({layer.entityCount})</span>
-                          </div>
-                          <div className="layer-intent-toggle">
-                            {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
-                              <button
-                                key={intent}
-                                className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
-                                onClick={() => setLayerIntents(prev => ({ ...prev, [layer.name]: intent }))}
-                              >{intent}</button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           {/* ══ Right column ══ */}
