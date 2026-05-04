@@ -3,7 +3,7 @@ import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/render
 
 // ─────────────────────────────────────────────────────────
 // QuotePdfDocument — Modern professional quote PDF
-// Support for Multi-Part Batches and Price Breaks.
+// Consolidated Batch Quote Structure.
 // ─────────────────────────────────────────────────────────
 
 function darken(hex: string, amount = 0.15): string {
@@ -77,14 +77,25 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
     table: { marginBottom: 20 },
     tableHeader: { flexDirection: 'row', backgroundColor: brand, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 4 },
     tableHeaderText: { fontSize: 8, fontWeight: 'bold', color: '#ffffff', textTransform: 'uppercase' },
-    tableRow: { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-    tableCell: { fontSize: 9, color: '#374151' },
-    tableCellBold: { fontSize: 9, color: '#111827', fontWeight: 'bold' },
     colNum: { width: 25 },
     colDesc: { flex: 1 },
     colQty: { width: 45, textAlign: 'right' },
     colUnit: { width: 65, textAlign: 'right' },
     colTotal: { width: 75, textAlign: 'right' },
+    // Consolidated Row Styles
+    rowContainer: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+    mainRow: { flexDirection: 'row', paddingHorizontal: 8, marginBottom: 6 },
+    tableCell: { fontSize: 9, color: '#374151' },
+    tableCellBold: { fontSize: 9, color: '#111827', fontWeight: 'bold' },
+    subRow: { marginLeft: 33, paddingRight: 8 },
+    specLine: { flexDirection: 'row', gap: 15, marginBottom: 6 },
+    specText: { fontSize: 7, color: '#9ca3af' },
+    pbContainer: { marginTop: 4, backgroundColor: '#f9fafb', padding: 8, borderRadius: 4 },
+    pbTitle: { fontSize: 7, fontWeight: 'bold', color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+    pbGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+    pbItem: { marginRight: 20, marginBottom: 2 },
+    pbQtyLabel: { fontSize: 6, color: '#9ca3af', textTransform: 'uppercase' },
+    pbUnitPrice: { fontSize: 8, fontWeight: 'bold', color: brandDark },
     // Totals
     totalsBlock: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 20 },
     totalsTable: { width: 200 },
@@ -94,24 +105,8 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
     grandTotalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, marginTop: 4, borderTopWidth: 2, borderTopColor: brand },
     grandTotalLabel: { fontSize: 12, fontWeight: 'bold', color: '#111827' },
     grandTotalValue: { fontSize: 12, fontWeight: 'bold', color: brandDark },
-    // Part Detail Section
-    partDetailBox: { marginTop: 20, padding: 12, backgroundColor: '#fdfdfd', border: '1px solid #eee', borderRadius: 6 },
-    partDetailHeader: { fontSize: 11, fontWeight: 'bold', color: '#111827', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: brand, paddingBottom: 4 },
-    specsGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 },
-    specItem: { width: '33.33%', marginBottom: 8 },
-    specLabel: { fontSize: 7, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 2 },
-    specValue: { fontSize: 9, color: '#374151', fontWeight: 'bold' },
-    // Price Breaks Sub-table
-    pbTable: { marginTop: 5, backgroundColor: '#fff', borderRadius: 4, overflow: 'hidden', border: '1px solid #f0f0f0' },
-    pbHeader: { flexDirection: 'row', backgroundColor: '#f9fafb', paddingVertical: 4, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-    pbHeaderText: { fontSize: 7, fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase' },
-    pbRow: { flexDirection: 'row', paddingVertical: 4, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: '#f9fafb' },
-    pbCell: { fontSize: 8, color: '#4b5563' },
-    pbColQty: { width: 50 },
-    pbColUnit: { flex: 1, textAlign: 'right' },
-    pbColTotal: { width: 80, textAlign: 'right' },
     // Misc
-    notesBox: { backgroundColor: brandLight, padding: 12, borderRadius: 6, borderLeftWidth: 3, borderLeftColor: brand, marginTop: 20 },
+    notesBox: { backgroundColor: brandLight, padding: 12, borderRadius: 6, borderLeftWidth: 3, borderLeftColor: brand, marginTop: 10 },
     notesTitle: { fontSize: 8, fontWeight: 'bold', color: '#374151', marginBottom: 4, textTransform: 'uppercase' },
     notesText: { fontSize: 9, color: '#4b5563', lineHeight: 1.4 },
     footer: { position: 'absolute', bottom: 0, left: 0, right: 0 },
@@ -175,27 +170,54 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
             </View>
           </View>
 
-          {/* Line Items Table */}
+          {/* Consolidated Line Items Table */}
           <View style={s.table}>
             <View style={s.tableHeader}>
               <Text style={{ ...s.tableHeaderText, ...s.colNum }}>#</Text>
-              <Text style={{ ...s.tableHeaderText, ...s.colDesc }}>Description</Text>
+              <Text style={{ ...s.tableHeaderText, ...s.colDesc }}>Description &amp; Specifications</Text>
               <Text style={{ ...s.tableHeaderText, ...s.colQty }}>Qty</Text>
               <Text style={{ ...s.tableHeaderText, ...s.colUnit }}>Unit Price</Text>
               <Text style={{ ...s.tableHeaderText, ...s.colTotal }}>Line Total</Text>
             </View>
+
             {quotes.map((q, i) => (
-              <View key={q.id} style={s.tableRow}>
-                <Text style={{ ...s.tableCell, ...s.colNum }}>{i + 1}</Text>
-                <View style={s.colDesc}>
-                  <Text style={s.tableCellBold}>{q.filename}</Text>
-                  <Text style={{ fontSize: 7, color: '#9ca3af', marginTop: 1 }}>
-                    {q.materials?.name} {q.thickness_mm}mm · {q.bend_count} bends
-                  </Text>
+              <View key={q.id} wrap={false} style={s.rowContainer}>
+                {/* Main line: # | Desc | Qty | Unit | Total */}
+                <View style={s.mainRow}>
+                  <Text style={{ ...s.tableCell, ...s.colNum }}>{i + 1}</Text>
+                  <View style={s.colDesc}>
+                    <Text style={s.tableCellBold}>{q.filename}</Text>
+                    <Text style={{ fontSize: 7, color: '#9ca3af', marginTop: 1 }}>
+                      {q.materials?.name} {q.thickness_mm}mm · {q.bend_count} bends
+                    </Text>
+                  </View>
+                  <Text style={{ ...s.tableCellBold, ...s.colQty }}>{q.quantity}</Text>
+                  <Text style={{ ...s.tableCellBold, ...s.colUnit }}>{fmt(q.unit_price)}</Text>
+                  <Text style={{ ...s.tableCellBold, ...s.colTotal }}>{fmt(q.total_price)}</Text>
                 </View>
-                <Text style={{ ...s.tableCellBold, ...s.colQty }}>{q.quantity}</Text>
-                <Text style={{ ...s.tableCellBold, ...s.colUnit }}>{fmt(q.unit_price)}</Text>
-                <Text style={{ ...s.tableCellBold, ...s.colTotal }}>{fmt(q.total_price)}</Text>
+
+                {/* Sub-row: Specs and Volume Pricing */}
+                <View style={s.subRow}>
+                  <View style={s.specLine}>
+                    <Text style={s.specText}>Dims: {fmtMm(q.bounding_width_mm)} x {fmtMm(q.bounding_height_mm)}</Text>
+                    <Text style={s.specText}>Cut: {fmtMm(q.perimeter_mm)}</Text>
+                    <Text style={s.specText}>Pierces: {q.pierce_count}</Text>
+                  </View>
+
+                  {q.price_breaks && q.price_breaks.length > 0 && (
+                    <View style={s.pbContainer}>
+                      <Text style={s.pbTitle}>Volume Pricing / Price Breaks</Text>
+                      <View style={s.pbGrid}>
+                        {q.price_breaks.sort((a:any, b:any) => a.quantity - b.quantity).map((pb:any, j:number) => (
+                          <View key={j} style={s.pbItem}>
+                            <Text style={s.pbQtyLabel}>{pb.quantity} Qty</Text>
+                            <Text style={s.pbUnitPrice}>{fmt(pb.unitPrice)}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                </View>
               </View>
             ))}
           </View>
@@ -213,42 +235,6 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
               </View>
             </View>
           </View>
-
-          {/* Detailed Part Specs & Price Breaks */}
-          {quotes.map((q, i) => (
-            <View key={q.id} style={s.partDetailBox} wrap={false}>
-              <Text style={s.partDetailHeader}>Item {i + 1}: {q.filename}</Text>
-              <View style={s.specsGrid}>
-                <View style={s.specItem}><Text style={s.specLabel}>Material</Text><Text style={s.specValue}>{q.materials?.name} {q.materials?.grade}</Text></View>
-                <View style={s.specItem}><Text style={s.specLabel}>Thickness</Text><Text style={s.specValue}>{fmtMm(q.thickness_mm)}</Text></View>
-                <View style={s.specItem}><Text style={s.specLabel}>Dimensions</Text><Text style={s.specValue}>{fmtMm(q.bounding_width_mm)} × {fmtMm(q.bounding_height_mm)}</Text></View>
-                <View style={s.specItem}><Text style={s.specLabel}>Cut Length</Text><Text style={s.specValue}>{fmtMm(q.perimeter_mm)}</Text></View>
-                <View style={s.specItem}><Text style={s.specLabel}>Process</Text><Text style={s.specValue}>{q.machine_profiles?.name}</Text></View>
-                <View style={s.specItem}><Text style={s.specLabel}>Bends / Pierces</Text><Text style={s.specValue}>{q.bend_count} / {q.pierce_count}</Text></View>
-              </View>
-
-              {q.price_breaks && Array.isArray(q.price_breaks) && q.price_breaks.length > 0 && (
-                <View>
-                  <Text style={s.sectionLabel}>Volume Pricing / Price Breaks</Text>
-                  <View style={s.pbTable}>
-                    <View style={s.pbHeader}>
-                      <Text style={{ ...s.pbHeaderText, ...s.pbColQty }}>Quantity</Text>
-                      <Text style={{ ...s.pbHeaderText, ...s.pbColUnit }}>Unit Price</Text>
-                      <Text style={{ ...s.pbHeaderText, ...s.pbColTotal }}>Total Price</Text>
-                    </View>
-                    {/* Include the primary quantity break if not in array, or just show all in array */}
-                    {q.price_breaks.sort((a:any, b:any) => a.quantity - b.quantity).map((pb: any, j: number) => (
-                      <View key={j} style={s.pbRow}>
-                        <Text style={{ ...s.pbCell, ...s.pbColQty }}>{pb.quantity}</Text>
-                        <Text style={{ ...s.pbCell, ...s.pbColUnit }}>{fmt(pb.unitPrice)}</Text>
-                        <Text style={{ ...s.pbCell, ...s.pbColTotal }}>{fmt(pb.totalPrice)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-            </View>
-          ))}
 
           {mainQuote.notes && (
             <View style={s.notesBox}>
