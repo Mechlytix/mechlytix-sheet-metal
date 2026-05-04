@@ -3,10 +3,10 @@ import { notFound } from "next/navigation";
 import { parseDXFGeometry } from "@/lib/dxf/parse-dxf";
 import { QuoteDetailClient } from "@/components/QuoteDetailClient";
 import type { Metadata } from "next";
+import type { PricingGeometry } from "@/lib/pricing/types";
 
 // ─────────────────────────────────────────────────────────
 // /dashboard/quotes/[id] — Quote Detail (Server wrapper)
-// Fetches data and passes to client component.
 // ─────────────────────────────────────────────────────────
 
 interface Props { params: Promise<{ id: string }> }
@@ -51,7 +51,7 @@ export default async function QuoteDetailPage({ params }: Props) {
 
   const brandColor = settings?.brand_color ?? '#ff6600';
 
-  // Fetch linked customer
+  // Fetch linked customer (with company_name)
   const customerId = (quote as Record<string, unknown>).customer_id as string | null;
   let customer = null;
   if (customerId) {
@@ -73,11 +73,6 @@ export default async function QuoteDetailPage({ params }: Props) {
     .or(`user_id.eq.${user.id},is_system.eq.true`)
     .order("name");
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mat = (quote as any).materials;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mach = (quote as any).machine_profiles;
-
   const createdDate = quote.created_at
     ? new Date(quote.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : null;
@@ -85,16 +80,6 @@ export default async function QuoteDetailPage({ params }: Props) {
   const expiresDate = quote.expires_at
     ? new Date(quote.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : null;
-
-  // DXF preview
-  let dxfPreview = null;
-  if (quote.input_type === "dxf" && quote.uploads?.storage_path) {
-    const { data: fileData } = await supabase.storage.from("step-files").download(quote.uploads.storage_path);
-    if (fileData) {
-      const text = await fileData.text();
-      dxfPreview = parseDXFGeometry(text);
-    }
-  }
 
   // Fetch all quotes in the same batch if grouped
   let batchQuotes = [quote];
@@ -104,26 +89,46 @@ export default async function QuoteDetailPage({ params }: Props) {
       .select(`
         *,
         materials ( id, name, grade, category, color_hex, cost_per_kg, density_kg_m3, scrap_value_per_kg ),
-        machine_profiles:machine_id ( id, name, machine_type, hourly_rate, power_kw, feed_rates, pierce_time_seconds, setup_time_minutes, cost_per_bend )
+        machine_profiles:machine_id ( id, name, machine_type, hourly_rate, power_kw, feed_rates, pierce_time_seconds, setup_time_minutes, cost_per_bend ),
+        uploads:upload_id ( storage_path )
       `)
       .eq("group_id", quote.group_id)
       .order("created_at", { ascending: true });
     if (batch && batch.length > 0) batchQuotes = batch;
   }
 
+  // Fetch DXF previews for ALL batch quotes (not just the primary)
+  const dxfPreviews: Record<string, PricingGeometry> = {};
+  for (const bq of batchQuotes) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bqAny = bq as any;
+    if (bqAny.input_type === "dxf" && bqAny.uploads?.storage_path) {
+      try {
+        const { data: fileData } = await supabase.storage
+          .from("step-files")
+          .download(bqAny.uploads.storage_path);
+        if (fileData) {
+          const text = await fileData.text();
+          const geo = parseDXFGeometry(text);
+          dxfPreviews[bqAny.id] = geo;
+        }
+      } catch {
+        // Skip if download fails
+      }
+    }
+  }
+
   return (
     <QuoteDetailClient
       quote={quote}
       batchQuotes={batchQuotes}
-      mat={mat}
-      mach={mach}
       customer={customer}
       profile={profile}
       brandColor={brandColor}
       userId={user.id}
       createdDate={createdDate}
       expiresDate={expiresDate}
-      dxfPreview={dxfPreview}
+      dxfPreviews={dxfPreviews}
       materials={materials ?? []}
       machines={machines ?? []}
     />

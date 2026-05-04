@@ -12,30 +12,74 @@ export default async function QuotesPage() {
     .from("quotes")
     .select(`
       id, filename, input_type, quantity, unit_price, total_price,
-      status, customer_name, thickness_mm, bend_count, created_at,
-      quote_number,
-      materials(name, category)
+      status, customer_name, created_at, quote_number, group_id,
+      materials(name, category),
+      customers(name, company_name)
     `)
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
-    .limit(100);
+    .limit(200);
 
-  // Group quotes by quote_number (or id if missing)
-  const grouped = (quotes || []).reduce((acc: any[], q) => {
-    const existing = acc.find(item => item.quote_number === q.quote_number && q.quote_number != null);
+  // Group quotes by quote_number for batch display
+  interface GroupedQuote {
+    id: string;
+    quote_number: string | null;
+    filename: string;
+    input_type: string;
+    total_price: number;
+    status: string;
+    created_at: string;
+    customer_display: string;
+    customer_sub: string;
+    material_display: string;
+    childCount: number;
+    partQty: number;
+    isBatch: boolean;
+  }
+
+  const grouped: GroupedQuote[] = [];
+
+  for (const q of (quotes || [])) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cust = (q as any).customers;
+    const companyName = cust?.company_name || "";
+    const contactName = cust?.name || q.customer_name || "";
+    const customerDisplay = companyName || contactName || "—";
+    const customerSub = companyName && contactName ? contactName : "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mat = (q as any).materials;
+    const materialDisplay = mat?.name || "—";
+
+    const existing = grouped.find(
+      item => item.quote_number === q.quote_number && q.quote_number != null
+    );
+
     if (existing) {
       existing.isBatch = true;
-      existing.childCount = (existing.childCount || 1) + 1;
+      existing.childCount += 1;
       existing.total_price = (existing.total_price || 0) + (q.total_price || 0);
-      existing.quantity = (existing.quantity || 0) + (q.quantity || 0);
-      // Keep track of materials/thickness to see if they match
-      if (existing.thickness_mm !== q.thickness_mm) existing.thickness_mm = "Mixed";
-      if (existing.bend_count !== q.bend_count) existing.bend_count = "Mixed";
-      return acc;
+      existing.partQty += (q.quantity || 1);
+      if (existing.material_display !== materialDisplay) {
+        existing.material_display = "Mixed";
+      }
+    } else {
+      grouped.push({
+        id: q.id,
+        quote_number: q.quote_number,
+        filename: q.filename,
+        input_type: q.input_type,
+        total_price: q.total_price || 0,
+        status: q.status || "draft",
+        created_at: q.created_at || "",
+        customer_display: customerDisplay,
+        customer_sub: customerSub,
+        material_display: materialDisplay,
+        childCount: 1,
+        partQty: q.quantity || 1,
+        isBatch: false,
+      });
     }
-    acc.push({ ...q, isBatch: false, childCount: 1 });
-    return acc;
-  }, []);
+  }
 
   function StatusBadge({ status }: { status: string }) {
     const map: Record<string, string> = {
@@ -50,7 +94,9 @@ export default async function QuotesPage() {
       <div className="dash-page-header">
         <div>
           <h1 className="dash-page-title">Quotes</h1>
-          <p className="dash-page-subtitle">{quotes?.length ?? 0} items across {grouped.length} quotations</p>
+          <p className="dash-page-subtitle">
+            {quotes?.length ?? 0} line items across {grouped.length} quotations
+          </p>
         </div>
         <div className="dash-page-actions">
           <Link href="/dashboard/quoter" className="btn-primary">⚡ New Quote</Link>
@@ -64,54 +110,62 @@ export default async function QuotesPage() {
         </div>
       ) : (
         <div className="table-card">
-          <table className="data-table">
+          <table className="data-table quotes-table">
             <thead>
               <tr>
-                <th>Quote #</th>
-                <th>Main File / Batch</th>
-                <th>Type</th>
-                <th>Material</th>
-                <th>Thickness</th>
-                <th>Bends</th>
-                <th>Parts</th>
-                <th>Total (ex. VAT)</th>
+                <th>Quote</th>
+                <th>Description</th>
                 <th>Customer</th>
+                <th className="th-right">Parts</th>
+                <th className="th-right">Total (ex. VAT)</th>
                 <th>Status</th>
                 <th>Date</th>
               </tr>
             </thead>
             <tbody>
               {grouped.map((q) => (
-                <tr key={q.id} className="quote-row-link">
-                  <td colSpan={11} style={{ padding: 0 }}>
-                    <Link href={`/dashboard/quotes/${q.id}`} className="quote-row-inner">
+                <tr key={q.id} className={`quote-row-link ${q.isBatch ? "quote-row-batch" : ""}`}>
+                  <td colSpan={7} style={{ padding: 0 }}>
+                    <Link href={`/dashboard/quotes/${q.id}`} className="quote-row-inner quote-row-7col">
+                      {/* Quote # */}
                       <span className="td-quote-number">{q.quote_number || "—"}</span>
-                      <span className="td-filename">
-                        {q.isBatch ? (
-                          <span className="batch-label">
-                            <span className="batch-icon">📦</span> 
-                            {q.filename} <span className="batch-count">+{q.childCount - 1} more</span>
-                          </span>
-                        ) : (
-                          q.filename
+
+                      {/* Description: filename + material + batch badge */}
+                      <span className="td-description">
+                        <span className="td-filename-text">{q.filename}</span>
+                        <span className="td-description-meta">
+                          <span className="input-type-badge">{q.input_type}</span>
+                          {q.material_display !== "—" && (
+                            <span className="td-material-tag">{q.material_display}</span>
+                          )}
+                          {q.isBatch && (
+                            <span className="td-batch-badge">{q.childCount} parts</span>
+                          )}
+                        </span>
+                      </span>
+
+                      {/* Customer */}
+                      <span className="td-customer">
+                        <span className="td-customer-company">{q.customer_display}</span>
+                        {q.customer_sub && (
+                          <span className="td-customer-contact">{q.customer_sub}</span>
                         )}
                       </span>
-                      <span><span className="input-type-badge">{q.input_type}</span></span>
-                      <span className="td-muted">
-                        {q.materials ? q.materials.name : "—"}
+
+                      {/* Parts qty */}
+                      <span className="td-right">{q.partQty}</span>
+
+                      {/* Total */}
+                      <span className="td-price td-right">
+                        {q.total_price > 0 ? `£${q.total_price.toFixed(2)}` : "—"}
                       </span>
-                      <span className="td-muted">
-                        {q.thickness_mm === "Mixed" ? "Mixed" : (q.thickness_mm != null ? `${q.thickness_mm}mm` : "—")}
-                      </span>
-                      <span className="td-muted">
-                        {q.bend_count === "Mixed" ? "Mixed" : (q.bend_count ?? "—")}
-                      </span>
-                      <span>{q.quantity ?? 1}</span>
-                      <span className="td-price">{q.total_price != null ? `£${q.total_price.toFixed(2)}` : "—"}</span>
-                      <span className="td-muted">{q.customer_name ?? "—"}</span>
-                      <span><StatusBadge status={q.status ?? "draft"} /></span>
+
+                      {/* Status */}
+                      <span><StatusBadge status={q.status} /></span>
+
+                      {/* Date */}
                       <span className="td-date">
-                        {q.created_at ? new Date(q.created_at).toLocaleDateString("en-GB") : "—"}
+                        {q.created_at ? new Date(q.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
                       </span>
                     </Link>
                   </td>

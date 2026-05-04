@@ -40,15 +40,13 @@ type Quote = Record<string, any>;
 interface Props {
   quote: Quote;
   batchQuotes: Quote[];
-  mat: Material | null;
-  mach: Machine | null;
   customer: Record<string, unknown> | null;
   profile: Record<string, unknown> | null;
   brandColor: string;
   userId: string;
   createdDate: string | null;
   expiresDate: string | null;
-  dxfPreview: PricingGeometry | null;
+  dxfPreviews: Record<string, PricingGeometry>;
   materials: Material[];
   machines: Machine[];
 }
@@ -172,44 +170,77 @@ function NumInput({ value, onChange, prefix, step = 0.01, min = 0 }: {
    ───────────────────────────────────────────────────────── */
 
 export function QuoteDetailClient({
-  quote, batchQuotes, mat, mach, customer, profile, brandColor,
-  userId, createdDate, expiresDate, dxfPreview,
+  quote, batchQuotes, customer, profile, brandColor,
+  userId, createdDate, expiresDate, dxfPreviews,
   materials, machines,
 }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // ── Price Breaks ──
+  // ── Batch part navigation ──
+  const isBatch = batchQuotes.length > 1;
+  const [activePartIndex, setActivePartIndex] = useState(() =>
+    Math.max(0, batchQuotes.findIndex(q => q.id === quote.id))
+  );
+  const activeQuote = batchQuotes[activePartIndex] || quote;
+  const activeDxf = dxfPreviews[activeQuote.id] || null;
+
+  // Derived mat/mach for the active part
+  const mat = activeQuote.materials || materials.find(m => m.id === activeQuote.material_id) || null;
+  const mach = activeQuote.machine_profiles || machines.find(m => m.id === activeQuote.machine_id) || null;
+
+  // ── Price Breaks (per active part) ──
   const [priceBreaks, setPriceBreaks] = useState<PriceBreak[]>(() => {
-    if (quote.price_breaks && Array.isArray(quote.price_breaks) && quote.price_breaks.length > 0) {
-      return quote.price_breaks;
+    if (activeQuote.price_breaks && Array.isArray(activeQuote.price_breaks) && activeQuote.price_breaks.length > 0) {
+      return activeQuote.price_breaks;
     }
     return [{
-      quantity: quote.quantity || 1,
-      unitPrice: quote.unit_price || 0,
-      totalPrice: quote.total_price || 0,
-      materialCostPerPart: quote.material_cost || 0,
-      cuttingCostPerPart: quote.cutting_cost || 0,
-      bendingCostPerPart: quote.bending_cost || 0,
-      setupCostPerPart: (quote.setup_cost || 0) / (quote.quantity || 1),
-      setupCostTotal: quote.setup_cost || 0,
+      quantity: activeQuote.quantity || 1,
+      unitPrice: activeQuote.unit_price || 0,
+      totalPrice: activeQuote.total_price || 0,
+      materialCostPerPart: activeQuote.material_cost || 0,
+      cuttingCostPerPart: activeQuote.cutting_cost || 0,
+      bendingCostPerPart: activeQuote.bending_cost || 0,
+      setupCostPerPart: (activeQuote.setup_cost || 0) / (activeQuote.quantity || 1),
+      setupCostTotal: activeQuote.setup_cost || 0,
       overrides: { material: null, cutting: null, bending: null, setup: null }
     }];
   });
 
   const primaryBreak = priceBreaks[0] || { quantity: 1, unitPrice: 0, totalPrice: 0 };
 
-  const [markupPercent, setMarkupPercent] = useState(quote.markup_percent ?? 15);
-  const [thicknessMm, setThicknessMm] = useState(quote.thickness_mm ?? 0);
-  const [pierceCount, setPierceCount] = useState(quote.pierce_count ?? 0);
-  const [bendCount, setBendCount] = useState(quote.bend_count ?? 0);
-  const [materialId, setMaterialId] = useState(quote.material_id ?? "");
-  const [machineId, setMachineId] = useState(quote.machine_id ?? "");
+  const [markupPercent, setMarkupPercent] = useState(activeQuote.markup_percent ?? 15);
+  const [thicknessMm, setThicknessMm] = useState(activeQuote.thickness_mm ?? 0);
+  const [pierceCount, setPierceCount] = useState(activeQuote.pierce_count ?? 0);
+  const [bendCount, setBendCount] = useState(activeQuote.bend_count ?? 0);
+  const [materialId, setMaterialId] = useState(activeQuote.material_id ?? "");
+  const [machineId, setMachineId] = useState(activeQuote.machine_id ?? "");
   const [customerId, setCustomerId] = useState<string | null>(quote.customer_id ?? null);
   const [customerRef, setCustomerRef] = useState(quote.customer_ref ?? "");
   const [expiresAt, setExpiresAt] = useState(quote.expires_at ? quote.expires_at.slice(0, 10) : "");
   const [notes, setNotes] = useState(quote.notes ?? "");
+
+  // ── Sync part-specific state when switching parts ──
+  React.useEffect(() => {
+    const q = batchQuotes[activePartIndex] || quote;
+    const breaks = (q.price_breaks && Array.isArray(q.price_breaks) && q.price_breaks.length > 0) ? q.price_breaks : [{
+      quantity: q.quantity || 1, unitPrice: q.unit_price || 0, totalPrice: q.total_price || 0,
+      materialCostPerPart: q.material_cost || 0, cuttingCostPerPart: q.cutting_cost || 0,
+      bendingCostPerPart: q.bending_cost || 0,
+      setupCostPerPart: (q.setup_cost || 0) / (q.quantity || 1), setupCostTotal: q.setup_cost || 0,
+      overrides: { material: null, cutting: null, bending: null, setup: null }
+    }];
+    setPriceBreaks(breaks);
+    setMarkupPercent(q.markup_percent ?? 15);
+    setThicknessMm(q.thickness_mm ?? 0);
+    setPierceCount(q.pierce_count ?? 0);
+    setBendCount(q.bend_count ?? 0);
+    setMaterialId(q.material_id ?? "");
+    setMachineId(q.machine_id ?? "");
+    setLayerIntents({});
+    setPathIntents({});
+  }, [activePartIndex]);
 
   // ── DXF layer/path intents ──
   const [layerIntents, setLayerIntents] = useState<Record<string, DXFIntent>>({});
@@ -254,14 +285,14 @@ export function QuoteDetailClient({
 
   // ── Effective Geometry (updates from DXF layers or quote data) ──
   const effectiveGeometry = useMemo(() => {
-    if (dxfPreview) {
-      if (dxfPreview.inputType !== "dxf" || !dxfPreview.dxfData) return dxfPreview;
+    if (activeDxf) {
+      if (activeDxf.inputType !== "dxf" || !activeDxf.dxfData) return activeDxf;
 
       let newPerimeter = 0;
       let newPierceCount = 0;
       let autoBendCount = 0;
 
-      dxfPreview.dxfData.paths.forEach(p => {
+      activeDxf.dxfData.paths.forEach(p => {
         const intent = pathIntents[p.id] || layerIntents[p.layer] || "cut";
         if (intent === "cut") {
           newPerimeter += p.length;
@@ -272,25 +303,25 @@ export function QuoteDetailClient({
       });
 
       return {
-        ...dxfPreview,
+        ...activeDxf,
         perimeter: newPerimeter,
         pierceCount: newPierceCount,
         bendCount: autoBendCount,
       };
     }
     
-    // Fallback to quote base data
+    // Fallback to active quote's stored data
     return {
-      inputType: quote.input_type,
-      perimeter: quote.perimeter_mm || 0,
-      partArea: quote.part_area_mm2 || 0,
-      boundingWidth: quote.bounding_width_mm || 0,
-      boundingHeight: quote.bounding_height_mm || 0,
-      thickness: quote.thickness_mm || 0,
-      bendCount: quote.bend_count || 0,
-      pierceCount: quote.pierce_count || 0,
+      inputType: activeQuote.input_type,
+      perimeter: activeQuote.perimeter_mm || 0,
+      partArea: activeQuote.part_area_mm2 || 0,
+      boundingWidth: activeQuote.bounding_width_mm || 0,
+      boundingHeight: activeQuote.bounding_height_mm || 0,
+      thickness: activeQuote.thickness_mm || 0,
+      bendCount: activeQuote.bend_count || 0,
+      pierceCount: activeQuote.pierce_count || 0,
     } as PricingGeometry;
-  }, [dxfPreview, quote, layerIntents, pathIntents]);
+  }, [activeDxf, activeQuote, layerIntents, pathIntents]);
 
   // ── Live Recalculation (All Breaks) ──
   React.useEffect(() => {
@@ -352,28 +383,26 @@ export function QuoteDetailClient({
   const netCost = (primaryBreak.materialCostPerPart) + (primaryBreak.cuttingCostPerPart) + (primaryBreak.bendingCostPerPart) + (primaryBreak.setupCostPerPart);
   const grossMargin = unitPrice > 0 ? ((unitPrice - netCost) / unitPrice * 100) : null;
 
-  // ── View-mode prices (from server data) ──
-  const viewNetCost = (quote.material_cost ?? 0) + (quote.cutting_cost ?? 0) + (quote.bending_cost ?? 0) + ((quote.setup_cost ?? 0) / Math.max(quote.quantity ?? 1, 1));
-  const viewGrossMargin = quote.unit_price ? ((quote.unit_price - viewNetCost) / quote.unit_price * 100) : null;
+  // ── View-mode prices (from active part's server data) ──
+  const viewNetCost = (activeQuote.material_cost ?? 0) + (activeQuote.cutting_cost ?? 0) + (activeQuote.bending_cost ?? 0) + ((activeQuote.setup_cost ?? 0) / Math.max(activeQuote.quantity ?? 1, 1));
+  const viewGrossMargin = activeQuote.unit_price ? ((activeQuote.unit_price - viewNetCost) / activeQuote.unit_price * 100) : null;
 
   function resetFields() {
-    setPriceBreaks(quote.price_breaks || [{
-      quantity: quote.quantity || 1,
-      unitPrice: quote.unit_price || 0,
-      totalPrice: quote.total_price || 0,
-      materialCostPerPart: quote.material_cost || 0,
-      cuttingCostPerPart: quote.cutting_cost || 0,
-      bendingCostPerPart: quote.bending_cost || 0,
-      setupCostPerPart: (quote.setup_cost || 0) / (quote.quantity || 1),
-      setupCostTotal: quote.setup_cost || 0,
+    const q = batchQuotes[activePartIndex] || quote;
+    const breaks = (q.price_breaks && Array.isArray(q.price_breaks) && q.price_breaks.length > 0) ? q.price_breaks : [{
+      quantity: q.quantity || 1, unitPrice: q.unit_price || 0, totalPrice: q.total_price || 0,
+      materialCostPerPart: q.material_cost || 0, cuttingCostPerPart: q.cutting_cost || 0,
+      bendingCostPerPart: q.bending_cost || 0,
+      setupCostPerPart: (q.setup_cost || 0) / (q.quantity || 1), setupCostTotal: q.setup_cost || 0,
       overrides: { material: null, cutting: null, bending: null, setup: null, markup: null }
-    }]);
-    setMarkupPercent(quote.markup_percent ?? 15);
-    setThicknessMm(quote.thickness_mm ?? 0);
-    setPierceCount(quote.pierce_count ?? 0);
-    setBendCount(quote.bend_count ?? 0);
-    setMaterialId(quote.material_id ?? "");
-    setMachineId(quote.machine_id ?? "");
+    }];
+    setPriceBreaks(breaks);
+    setMarkupPercent(q.markup_percent ?? 15);
+    setThicknessMm(q.thickness_mm ?? 0);
+    setPierceCount(q.pierce_count ?? 0);
+    setBendCount(q.bend_count ?? 0);
+    setMaterialId(q.material_id ?? "");
+    setMachineId(q.machine_id ?? "");
     setCustomerId(quote.customer_id ?? null);
     setCustomerRef(quote.customer_ref ?? "");
     setExpiresAt(quote.expires_at ? quote.expires_at.slice(0, 10) : "");
@@ -388,13 +417,10 @@ export function QuoteDetailClient({
     setSaving(true);
     const supabase = createClient();
     
-    // Sync the active break overrides into the priceBreaks array before saving
-    // Actually they are already synced via setPriceBreaks in updateOverride.
-    
-    // We use the first price break as the "primary" for legacy flat columns
     const primary = priceBreaks[0];
 
-    const updateData: any = {
+    // Part-specific data (saved to activeQuote)
+    const partData: any = {
       material_cost: primary.overrides.material ?? primary.materialCostPerPart,
       cutting_cost: primary.overrides.cutting ?? primary.cuttingCostPerPart,
       bending_cost: primary.overrides.bending ?? primary.bendingCostPerPart,
@@ -409,34 +435,27 @@ export function QuoteDetailClient({
       bend_count: effectiveGeometry?.bendCount ?? bendCount,
       material_id: materialId || null,
       machine_id: machineId || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Shared data (applied to all parts in the batch)
+    const sharedData: any = {
       customer_id: customerId || null,
       customer_ref: customerRef.trim() || null,
       expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
       notes: notes.trim() || null,
-      updated_at: new Date().toISOString(),
+      ...(customerId ? { customer_name: null, customer_email: null } : {}),
     };
 
-    // If we have a linked customer, we should probably null out the denormalized strings
-    // to ensure the UI prefers the joined customer data.
-    if (customerId) {
-      updateData.customer_name = null;
-      updateData.customer_email = null;
-    }
-
-    const { error } = await supabase.from("quotes").update(updateData).eq("id", quote.id);
-
+    // Save the active part
+    const { error } = await supabase.from("quotes").update({ ...partData, ...sharedData }).eq("id", activeQuote.id);
     if (error) { alert("Failed to save: " + error.message); setSaving(false); return; }
 
-    // If part of a batch, update the shared metadata for the rest of the batch
+    // Sync shared fields to rest of batch
     if (quote.group_id) {
-      await supabase.from("quotes").update({
-        customer_id: customerId || null,
-        customer_ref: customerRef.trim() || null,
-        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
-        notes: notes.trim() || null,
-        // Also clear denormalized fields for the batch
-        ...(customerId ? { customer_name: null, customer_email: null } : {})
-      }).eq("group_id", quote.group_id).neq("id", quote.id);
+      await supabase.from("quotes").update(sharedData)
+        .eq("group_id", quote.group_id)
+        .neq("id", activeQuote.id);
     }
 
     setSaving(false);
@@ -444,7 +463,7 @@ export function QuoteDetailClient({
     router.refresh();
   }
 
-  // Selected material / machine for display in view mode during edit
+  // Selected material / machine for display
   const displayMat = editing ? materials.find(m => m.id === materialId) ?? mat : mat;
   const displayMach = editing ? machines.find(m => m.id === machineId) ?? mach : mach;
 
@@ -459,11 +478,14 @@ export function QuoteDetailClient({
             <div className="qd-breadcrumb">
               <Link href="/dashboard/quotes" className="qd-breadcrumb-link">{"\u2190"} Quotes</Link>
             </div>
-            <h1 className="dash-page-title">{quote.filename}</h1>
+            <h1 className="dash-page-title">
+              {quote.quote_number && <span style={{ color: "var(--text-dim)", fontWeight: 400, marginRight: 8 }}>{quote.quote_number}</span>}
+              {customer?.company_name ? String(customer.company_name) : activeQuote.filename}
+            </h1>
             {createdDate && (
               <p className="dash-page-subtitle">
-                {quote.quote_number && <strong>{quote.quote_number}</strong>}
-                {quote.quote_number && " \u00B7 "}
+                {String(customer?.company_name ?? "") && <span>{activeQuote.filename} · </span>}
+                {String(customer?.name ?? "") && <span>{String(customer?.name)} · </span>}
                 Created {createdDate}
                 {expiresDate && " \u00B7 "}
                 {expiresDate && <span style={{ color: "var(--brand-primary)", fontWeight: 500 }}>Valid until {expiresDate}</span>}
@@ -511,15 +533,41 @@ export function QuoteDetailClient({
 
 
 
-        <div className={`qd-layout ${editing ? "qd-layout--editing" : ""}`}>
+        <div className={`qd-layout ${editing ? "qd-layout--editing" : ""} ${isBatch ? "qd-layout--batch" : ""}`}>
+          {/* ══ Batch Parts Sidebar ══ */}
+          {isBatch && (
+            <div className="quoter-items-sidebar no-print">
+              <div className="sidebar-header">
+                <h3 className="sidebar-title">Parts</h3>
+                <span className="item-count-badge">{batchQuotes.length}</span>
+              </div>
+              <div className="items-list">
+                {batchQuotes.map((bq, idx) => (
+                  <button
+                    key={bq.id}
+                    className={`item-tab ${activePartIndex === idx ? "active" : ""}`}
+                    onClick={() => setActivePartIndex(idx)}
+                  >
+                    <div className="item-tab-info">
+                      <span className="item-tab-name">{bq.filename}</span>
+                      <span className="item-tab-meta">
+                        Qty {bq.quantity || 1} · {fmt(bq.unit_price)}/ea
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ══ Left column ══ */}
           <div className="qd-left">
               {/* DXF Viewer Container */}
-              {(dxfPreview || quote.input_type === "dxf") && (
+              {(activeDxf || activeQuote.input_type === "dxf") && (
                 <div className="qd-section-card no-print" style={{ padding: 0, overflow: 'hidden', height: 500, background: 'var(--bg-secondary)', borderRadius: 12, marginBottom: 16 }}>
-                  {dxfPreview ? (
+                  {activeDxf ? (
                     <DxfViewer
-                      geometry={effectiveGeometry || dxfPreview}
+                      geometry={effectiveGeometry || activeDxf}
                       layerIntents={layerIntents}
                       pathIntents={pathIntents}
                       onPathClick={editing ? (id, currentIntent) => {
@@ -529,7 +577,7 @@ export function QuoteDetailClient({
                     />
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-dim)' }}>
-                      Loading DXF preview...
+                      No DXF preview available
                     </div>
                   )}
                 </div>
@@ -537,34 +585,34 @@ export function QuoteDetailClient({
 
               {/* Geometry Stats Card */}
               {effectiveGeometry && (
-                <div className="quoter-geometry-card" style={{ marginBottom: 16 }}>
-                  <div className="geo-stats-grid">
-                    <div className="geo-stat-item">
-                      <span className="geo-stat-label">Dimensions</span>
-                      <span className="geo-stat-value">{fmtMm(effectiveGeometry.boundingWidth)} × {fmtMm(effectiveGeometry.boundingHeight)}</span>
+                <div className="geo-card" style={{ marginBottom: 16 }}>
+                  <div className="geo-grid">
+                    <div className="geo-item">
+                      <span className="geo-label">Flat Pattern</span>
+                      <span className="geo-value">{fmtMm(effectiveGeometry.boundingWidth)} × {fmtMm(effectiveGeometry.boundingHeight)}</span>
                     </div>
-                    <div className="geo-stat-item">
-                      <span className="geo-stat-label">Perimeter</span>
-                      <span className="geo-stat-value">{fmtMm(effectiveGeometry.perimeter)}</span>
+                    <div className="geo-item">
+                      <span className="geo-label">Cut Length</span>
+                      <span className="geo-value">{fmtMm(effectiveGeometry.perimeter)}</span>
                     </div>
-                    <div className="geo-stat-item">
-                      <span className="geo-stat-label">Area</span>
-                      <span className="geo-stat-value">{(effectiveGeometry.partArea / 1000000).toFixed(2)} m²</span>
+                    <div className="geo-item">
+                      <span className="geo-label">Pierces</span>
+                      <span className="geo-value">{effectiveGeometry.pierceCount}</span>
                     </div>
-                    <div className="geo-stat-item">
-                      <span className="geo-stat-label">Pierces</span>
-                      <span className="geo-stat-value">{effectiveGeometry.pierceCount}</span>
+                    <div className="geo-item">
+                      <span className="geo-label">Bends</span>
+                      <span className="geo-value">{effectiveGeometry.bendCount > 0 ? effectiveGeometry.bendCount : "—"}</span>
                     </div>
                   </div>
                 </div>
               )}
 
               {/* Layer toggles — only in edit mode */}
-              {editing && dxfPreview && dxfPreview.dxfData && dxfPreview.dxfData.layers.length > 0 && (
+              {editing && activeDxf && activeDxf.dxfData && activeDxf.dxfData.layers.length > 0 && (
                 <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
                   <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>DXF Layers</p>
                   <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "-2px 0 4px" }}>Map layers to operations, or click lines on the drawing.</p>
-                  {dxfPreview.dxfData.layers.map(layer => {
+                  {activeDxf!.dxfData!.layers.map(layer => {
                     const currentIntent = layerIntents[layer.name] || "cut";
                     return (
                       <div key={layer.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 6, background: "rgba(128,128,128,0.06)" }}>
@@ -592,18 +640,18 @@ export function QuoteDetailClient({
             <div className={`qd-price-card ${editing ? "qd-editing" : ""}`}>
               <div className="qd-price-header">
                 <div>
-                  <p className="qd-price-filename">{quote.filename}</p>
+                  <p className="qd-price-filename">{activeQuote.filename}</p>
                   <div className="qd-price-display">
-                    <span className="qd-unit-price">{fmt(editing ? unitPrice : quote.unit_price)}</span>
+                    <span className="qd-unit-price">{fmt(editing ? unitPrice : activeQuote.unit_price)}</span>
                     <span className="qd-per-part">/ part</span>
                   </div>
                   <p className="qd-total-line">
-                    Qty {editing ? quantity : (quote.quantity ?? 1)} {"\u00D7"} {fmt(editing ? unitPrice : quote.unit_price)} ={" "}
-                    <strong>{fmt(editing ? totalPrice : quote.total_price)}</strong>
+                    Qty {editing ? quantity : (activeQuote.quantity ?? 1)} {"\u00D7"} {fmt(editing ? unitPrice : activeQuote.unit_price)} ={" "}
+                    <strong>{fmt(editing ? totalPrice : activeQuote.total_price)}</strong>
                   </p>
                 </div>
                 <div className="qd-badges">
-                  <span className="input-type-badge">{quote.input_type}</span>
+                  <span className="input-type-badge">{activeQuote.input_type}</span>
                   {(editing ? grossMargin : viewGrossMargin) != null && (
                     <span className="qd-margin-badge">
                       {(editing ? grossMargin! : viewGrossMargin!).toFixed(0)}% margin
@@ -618,7 +666,7 @@ export function QuoteDetailClient({
                   <h3 className="qd-section-title" style={{ margin: 0 }}>Pricing Tiers</h3>
                   {!editing && (
                     <div className="qd-badges">
-                      <span className="input-type-badge">{quote.input_type}</span>
+                      <span className="input-type-badge">{activeQuote.input_type}</span>
                       {viewGrossMargin != null && (
                         <span className="qd-margin-badge">
                           {viewGrossMargin.toFixed(0)}% margin
@@ -645,7 +693,7 @@ export function QuoteDetailClient({
                     </thead>
                     <tbody>
                       {priceBreaks.map((pb, i) => (
-                        <tr key={i} className={!editing && pb.quantity === quote.quantity ? "current" : ""}>
+                        <tr key={i} className={!editing && pb.quantity === activeQuote.quantity ? "current" : ""}>
                           <td>
                             {editing ? (
                               <input 
@@ -802,11 +850,12 @@ export function QuoteDetailClient({
                   </div>
                 </div>
               ) : (
-                <div className="qd-detail-list">
-                  <div className="qd-detail-row"><span className="qd-dl-label">Name</span><span className="qd-dl-value">{customer?.name ?? quote.customer_name ?? "\u2014"}</span></div>
-                  <div className="qd-detail-row"><span className="qd-dl-label">Email</span><span className="qd-dl-value">{(customer?.email || quote.customer_email) ? <a href={`mailto:${customer?.email || quote.customer_email}`} className="qd-email-link">{customer?.email || quote.customer_email}</a> : "\u2014"}</span></div>
+              <div className="qd-detail-list">
+                  {Boolean(customer?.company_name) && <div className="qd-detail-row"><span className="qd-dl-label">Company</span><span className="qd-dl-value" style={{ fontWeight: 600 }}>{String(customer!.company_name)}</span></div>}
+                  <div className="qd-detail-row"><span className="qd-dl-label">Contact</span><span className="qd-dl-value">{customer?.name ? String(customer.name) : (quote.customer_name ?? "\u2014")}</span></div>
+                  <div className="qd-detail-row"><span className="qd-dl-label">Email</span><span className="qd-dl-value">{(customer?.email || quote.customer_email) ? <a href={`mailto:${customer?.email ? String(customer.email) : quote.customer_email}`} className="qd-email-link">{customer?.email ? String(customer.email) : quote.customer_email}</a> : "\u2014"}</span></div>
                   <div className="qd-detail-row"><span className="qd-dl-label">Reference</span><span className="qd-dl-value">{quote.customer_ref ?? "\u2014"}</span></div>
-                  <div className="qd-detail-row"><span className="qd-dl-label">Quantity</span><span className="qd-dl-value">{quote.quantity ?? 1}</span></div>
+                  <div className="qd-detail-row"><span className="qd-dl-label">Quantity</span><span className="qd-dl-value">{activeQuote.quantity ?? 1}</span></div>
                   {expiresDate && <div className="qd-detail-row"><span className="qd-dl-label">Expires</span><span className="qd-dl-value">{expiresDate}</span></div>}
                 </div>
               )}

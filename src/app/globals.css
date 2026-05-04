@@ -270,36 +270,94 @@ html, body {
   letter-spacing: 0.05em;
 }
 
-/* Batch Quotes UI */
+/* ── Quotes Dashboard Table ── */
+.quotes-table th { white-space: nowrap; }
+.th-right { text-align: right !important; }
+.td-right { text-align: right; font-variant-numeric: tabular-nums; }
+
+.quote-row-7col {
+  grid-template-columns: 90px 1fr 160px 60px 110px 80px 90px;
+}
+
 .td-quote-number {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-dim);
   font-weight: 500;
+  white-space: nowrap;
 }
 
-.batch-label {
+.td-description {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.td-filename-text {
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.td-description-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.batch-icon {
-  font-size: 14px;
-  opacity: 0.8;
-}
-
-.batch-count {
+.td-material-tag {
   font-size: 10px;
-  background: var(--accent-glow);
-  color: var(--brand-primary);
+  color: var(--text-dim);
+  background: rgba(128, 128, 128, 0.08);
   padding: 1px 6px;
-  border-radius: 10px;
-  font-weight: 700;
-  border: 1px solid rgba(255, 102, 0, 0.2);
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
-.quote-row-inner:hover .batch-count {
+.td-batch-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--brand-primary);
+  background: var(--accent-glow);
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 102, 0, 0.15);
+  white-space: nowrap;
+}
+
+.quote-row-batch {
+  border-left: 3px solid var(--brand-primary);
+}
+
+.td-customer {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.td-customer-company {
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.td-customer-contact {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-row-inner:hover .td-batch-badge {
   background: var(--brand-primary);
   color: white;
 }
