@@ -553,59 +553,121 @@ export default function QuoterPage() {
       )}
 
       {(phase.name === "ready" || phase.name === "saving") && activeItem && (
-        <div className="quoter-layout quoter-multi-layout">
-          <div className="quoter-items-sidebar no-print">
-            <div className="sidebar-header"><h3 className="sidebar-title">Batch Items</h3><span className="item-count-badge">{items.length}</span></div>
-            <div className="items-list">
+        <div className="quoter-layout quoter-two-col">
+
+          {/* ══ Main column ══ */}
+          <div className="quoter-left">
+
+            {/* Horizontal part tabs */}
+            <div className="part-tabs-bar">
               {items.map((item, idx) => (
-                <button key={item.id} className={`item-tab ${activeIndex === idx ? "active" : ""}`} onClick={() => setActiveIndex(idx)}>
-                  <div className="item-tab-info"><span className="item-tab-name">{item.filename}</span><span className="item-tab-meta">Qty {item.quantity}</span></div>
+                <button
+                  key={item.id}
+                  className={`part-tab ${activeIndex === idx ? "active" : ""}`}
+                  onClick={() => setActiveIndex(idx)}
+                >
+                  <span className="part-tab-name">{item.filename}</span>
+                  <span className="part-tab-meta">Qty {item.quantity}</span>
+                  {items.length > 1 && (
+                    <span className="part-tab-close" onClick={(e) => {
+                      e.stopPropagation();
+                      setItems(prev => {
+                        const next = prev.filter((_, i) => i !== idx);
+                        setActiveIndex(Math.min(activeIndex, next.length - 1));
+                        return next;
+                      });
+                    }}>×</span>
+                  )}
                 </button>
               ))}
-              <button className="btn-add-more" onClick={() => setPhase({ name: "idle" })}>+ Add Part</button>
-            </div>
-          </div>
-
-          <div className="quoter-left">
-            <div className="quoter-view-container" style={{ height: 500, background: "var(--bg-secondary)", borderRadius: 12, marginBottom: "1rem", overflow: "hidden", position: "relative" }}>
-              <DxfViewer 
-                geometry={activeItem.geometry} 
-                layerIntents={activeItem.layerIntents} 
-                pathIntents={activeItem.pathIntents}
-                onPathClick={(pid, intent) => {
-                  const nextIntent = intent === "cut" ? "bend" : intent === "bend" ? "ignore" : "cut";
-                  updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: nextIntent } });
-                }}
-              />
+              <button className="part-tab-add" onClick={() => setPhase({ name: "idle" })}>
+                + Add Part
+              </button>
             </div>
 
-            {effectiveGeometry && <GeometryCard geo={effectiveGeometry} units={units} />}
+            {/* Viewer + side config split */}
+            <div className="viewer-split">
+              {/* DXF Viewer */}
+              <div className="viewer-split-viewer">
+                <DxfViewer
+                  geometry={activeItem.geometry}
+                  layerIntents={activeItem.layerIntents}
+                  pathIntents={activeItem.pathIntents}
+                  onPathClick={(pid, intent) => {
+                    const nextIntent = intent === "cut" ? "bend" : intent === "bend" ? "ignore" : "cut";
+                    updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: nextIntent } });
+                  }}
+                />
+              </div>
 
-            <div className="config-panel">
-              <h3 className="config-title">Basic Configuration</h3>
-              <div className="config-grid">
-                <div className="form-field"><label>Material</label>
-                  <select value={activeItem.materialId} onChange={(e) => updateActiveItem({ materialId: e.target.value })}>
-                    {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.grade})</option>)}
-                  </select>
-                </div>
-                <div className="form-field"><label>Machine</label>
-                  <select value={activeItem.machineId} onChange={(e) => updateActiveItem({ machineId: e.target.value })}>
-                    {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                </div>
-                <div className="form-field"><label>Primary Quantity</label>
-                  <input type="number" value={activeItem.quantity} onChange={(e) => updateActiveItem({ quantity: Math.max(1, +e.target.value) })} />
-                </div>
-                <div className="form-field"><label>Markup (%)</label>
-                  <input type="number" value={activeItem.markup} onChange={(e) => updateActiveItem({ markup: Math.max(0, +e.target.value) })} />
-                </div>
-                <div className="form-field"><label>Lead Time</label>
-                  <input type="text" value={activeItem.leadTime} onChange={(e) => updateActiveItem({ leadTime: e.target.value })} />
+              {/* Side panel: geo + layers + config */}
+              <div className="viewer-split-panel">
+                {effectiveGeometry && <GeometryCard geo={effectiveGeometry} units={units} />}
+
+                {/* DXF Layer Intent Mapper */}
+                {activeItem.geometry.inputType === "dxf" && activeItem.geometry.dxfData && (
+                  <div className="dxf-layers-panel">
+                    <p className="dxf-layers-title">DXF Layers</p>
+                    <p className="dxf-layers-hint">Click lines in viewer or assign below</p>
+                    <div className="dxf-layers-list">
+                      {activeItem.geometry.dxfData.layers.map(layer => {
+                        const currentIntent = activeItem.layerIntents[layer.name] || "cut";
+                        return (
+                          <div key={layer.name} className="dxf-layer-row">
+                            <div className="dxf-layer-info">
+                              <div className="dxf-layer-dot" style={{ background: layer.color }} />
+                              <span className="dxf-layer-name">{layer.name}</span>
+                              <span className="dxf-layer-count">({layer.entityCount})</span>
+                            </div>
+                            <div className="layer-intent-toggle">
+                              {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
+                                <button key={intent}
+                                  className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
+                                  onClick={() => updateActiveItem({ layerIntents: { ...activeItem.layerIntents, [layer.name]: intent } })}
+                                >{intent}</button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Configuration */}
+                <div className="side-config-fields">
+                  <p className="dxf-layers-title">Configuration</p>
+                  <div className="form-field">
+                    <label>Material</label>
+                    <select value={activeItem.materialId} onChange={(e) => updateActiveItem({ materialId: e.target.value })}>
+                      {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.grade})</option>)}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Machine</label>
+                    <select value={activeItem.machineId} onChange={(e) => updateActiveItem({ machineId: e.target.value })}>
+                      {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="side-config-row">
+                    <div className="form-field">
+                      <label>Qty</label>
+                      <input type="number" value={activeItem.quantity} onChange={(e) => updateActiveItem({ quantity: Math.max(1, +e.target.value) })} />
+                    </div>
+                    <div className="form-field">
+                      <label>Markup %</label>
+                      <input type="number" value={activeItem.markup} onChange={(e) => updateActiveItem({ markup: Math.max(0, +e.target.value) })} />
+                    </div>
+                  </div>
+                  <div className="form-field">
+                    <label>Lead Time</label>
+                    <input type="text" value={activeItem.leadTime} onChange={(e) => updateActiveItem({ leadTime: e.target.value })} />
+                  </div>
                 </div>
               </div>
             </div>
 
+            {/* Tier Table — full width below the split */}
             <div className="config-panel" style={{ marginTop: "1rem" }}>
               <h3 className="config-title">Quantity Tiers &amp; Price Breaks</h3>
               <div className="tier-manager">
@@ -624,7 +686,6 @@ export default function QuoterPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Primary Qty Row (Non-removable but cost-editable) */}
                     <tr>
                       <td style={{ fontWeight: 600 }}>{activeItem.quantity} <small>(Base)</small></td>
                       <td className="tier-val-auto">{formatCurrency(result?.materialCostPerPart ?? 0)}</td>
@@ -636,7 +697,6 @@ export default function QuoterPage() {
                       <td className="tier-val-highlight">{formatCurrency(result?.unitPrice ?? 0)}</td>
                       <td></td>
                     </tr>
-                    {/* Additional Tiers */}
                     {activeItem.priceBreaks.map((pb, i) => (
                       <tr key={i}>
                         <td>
@@ -665,7 +725,7 @@ export default function QuoterPage() {
                   </tbody>
                 </table>
                 <div className="tier-add-row">
-                  <input type="number" className="tier-add-input" placeholder="Add Qty..." 
+                  <input type="number" className="tier-add-input" placeholder="Add Qty..."
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         const val = parseInt((e.target as HTMLInputElement).value);
@@ -676,31 +736,9 @@ export default function QuoterPage() {
                 </div>
               </div>
             </div>
-
-            {activeItem.geometry.inputType === "dxf" && activeItem.geometry.dxfData && (
-              <div className="config-panel" style={{ marginTop: "1rem" }}>
-                <h3 className="config-title">DXF Layers</h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {activeItem.geometry.dxfData.layers.map(layer => {
-                    const currentIntent = activeItem.layerIntents[layer.name] || "cut";
-                    return (
-                      <div key={layer.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 6, background: "rgba(255,255,255,0.03)" }}>
-                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{layer.name}</span>
-                        <div className="layer-intent-toggle">
-                          {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
-                            <button key={intent} className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
-                              onClick={() => updateActiveItem({ layerIntents: { ...activeItem.layerIntents, [layer.name]: intent } })}
-                            >{intent}</button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
 
+          {/* ══ Right column — save/summary ══ */}
           <div className="quoter-right">
             {result ? (
               <QuoteBreakdown result={result} filename={activeItem.filename} onSave={handleSave} saving={phase.name === "saving"} userId={userId} />

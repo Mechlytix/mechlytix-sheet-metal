@@ -1365,12 +1365,17 @@
 
 .quoter-layout {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: 1fr 380px;
   gap: 24px;
   align-items: start;
 }
 
-@media (max-width: 900px) {
+/* Two-column mode (no sidebar) */
+.quoter-two-col {
+  grid-template-columns: 1fr 380px;
+}
+
+@media (max-width: 1100px) {
   .quoter-layout { grid-template-columns: 1fr; }
 }
 
@@ -1378,8 +1383,215 @@
 .quoter-right {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
 }
+
+/* ── Horizontal Part Tabs ────────────────────────────────── */
+.part-tabs-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 0 0 12px;
+  flex-wrap: wrap;
+}
+
+.part-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px 8px 0 0;
+  border-bottom: none;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-size: 13px;
+  color: var(--text-secondary);
+  position: relative;
+}
+
+.part-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.part-tab.active {
+  background: var(--bg-card);
+  border-color: var(--border-active);
+  color: var(--text-primary);
+  font-weight: 500;
+  box-shadow: 0 -1px 0 0 var(--brand-primary) inset;
+}
+
+.part-tab-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.part-tab-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.part-tab-close {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-dim);
+  padding: 0 2px;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.part-tab-close:hover {
+  color: #dc3545;
+  background: rgba(220, 53, 69, 0.1);
+}
+
+.part-tab-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  transition: all 0.15s;
+  align-self: center;
+}
+
+.part-tab-add:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+/* ── Viewer + Side Panel Split ───────────────────────────── */
+.viewer-split {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.viewer-split-viewer {
+  height: 500px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.viewer-split-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@media (max-width: 1100px) {
+  .viewer-split {
+    grid-template-columns: 1fr;
+  }
+  .viewer-split-viewer { height: 380px; }
+  .viewer-split-panel { max-height: none; }
+}
+
+/* ── DXF Layers Panel (in side panel) ───────────────────── */
+.dxf-layers-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.dxf-layers-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 2px;
+}
+
+.dxf-layers-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+}
+
+.dxf-layers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dxf-layer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.dxf-layer-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  min-width: 0;
+  flex: 1;
+}
+
+.dxf-layer-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dxf-layer-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dxf-layer-count {
+  font-size: 10px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+/* ── Side Config Fields ──────────────────────────────────── */
+.side-config-fields {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.side-config-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 
 /* â”€â”€ Drop Zone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .drop-zone {

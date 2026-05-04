@@ -533,38 +533,32 @@ export function QuoteDetailClient({
 
 
 
-        <div className={`qd-layout ${editing ? "qd-layout--editing" : ""} ${isBatch ? "qd-layout--batch" : ""}`}>
-          {/* ══ Batch Parts Sidebar ══ */}
-          {isBatch && (
-            <div className="quoter-items-sidebar no-print">
-              <div className="sidebar-header">
-                <h3 className="sidebar-title">Parts</h3>
-                <span className="item-count-badge">{batchQuotes.length}</span>
-              </div>
-              <div className="items-list">
-                {batchQuotes.map((bq, idx) => (
-                  <button
-                    key={bq.id}
-                    className={`item-tab ${activePartIndex === idx ? "active" : ""}`}
-                    onClick={() => setActivePartIndex(idx)}
-                  >
-                    <div className="item-tab-info">
-                      <span className="item-tab-name">{bq.filename}</span>
-                      <span className="item-tab-meta">
-                        Qty {bq.quantity || 1} · {fmt(bq.unit_price)}/ea
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className={`qd-layout ${editing ? "qd-layout--editing" : ""}`}>
 
           {/* ══ Left column ══ */}
           <div className="qd-left">
-              {/* DXF Viewer Container */}
-              {(activeDxf || activeQuote.input_type === "dxf") && (
-                <div className="qd-section-card no-print" style={{ padding: 0, overflow: 'hidden', height: 500, background: 'var(--bg-secondary)', borderRadius: 12, marginBottom: 16 }}>
+
+            {/* Horizontal part tabs — only shown when batch */}
+            {isBatch && (
+              <div className="part-tabs-bar no-print">
+                {batchQuotes.map((bq, idx) => (
+                  <button
+                    key={bq.id}
+                    className={`part-tab ${activePartIndex === idx ? "active" : ""}`}
+                    onClick={() => setActivePartIndex(idx)}
+                  >
+                    <span className="part-tab-name">{bq.filename}</span>
+                    <span className="part-tab-meta">Qty {bq.quantity || 1} · {fmt(bq.unit_price)}/ea</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Viewer + side panel split */}
+            {(activeDxf || activeQuote.input_type === "dxf") ? (
+              <div className="viewer-split">
+                {/* DXF Viewer */}
+                <div className="viewer-split-viewer no-print">
                   {activeDxf ? (
                     <DxfViewer
                       geometry={effectiveGeometry || activeDxf}
@@ -581,62 +575,82 @@ export function QuoteDetailClient({
                     </div>
                   )}
                 </div>
-              )}
 
-              {/* Geometry Stats Card */}
-              {effectiveGeometry && (
-                <div className="geo-card" style={{ marginBottom: 16 }}>
-                  <div className="geo-grid">
-                    <div className="geo-item">
-                      <span className="geo-label">Flat Pattern</span>
-                      <span className="geo-value">{fmtMm(effectiveGeometry.boundingWidth)} × {fmtMm(effectiveGeometry.boundingHeight)}</span>
-                    </div>
-                    <div className="geo-item">
-                      <span className="geo-label">Cut Length</span>
-                      <span className="geo-value">{fmtMm(effectiveGeometry.perimeter)}</span>
-                    </div>
-                    <div className="geo-item">
-                      <span className="geo-label">Pierces</span>
-                      <span className="geo-value">{effectiveGeometry.pierceCount}</span>
-                    </div>
-                    <div className="geo-item">
-                      <span className="geo-label">Bends</span>
-                      <span className="geo-value">{effectiveGeometry.bendCount > 0 ? effectiveGeometry.bendCount : "—"}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Layer toggles — only in edit mode */}
-              {editing && activeDxf && activeDxf.dxfData && activeDxf.dxfData.layers.length > 0 && (
-                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>DXF Layers</p>
-                  <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "-2px 0 4px" }}>Map layers to operations, or click lines on the drawing.</p>
-                  {activeDxf!.dxfData!.layers.map(layer => {
-                    const currentIntent = layerIntents[layer.name] || "cut";
-                    return (
-                      <div key={layer.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 6, background: "rgba(128,128,128,0.06)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", marginRight: 8 }}>
-                          <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: layer.color }} />
-                          <span style={{ fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{layer.name}</span>
-                          <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>({layer.entityCount})</span>
+                {/* Side panel: geo stats + layer toggles */}
+                <div className="viewer-split-panel">
+                  {effectiveGeometry && (
+                    <div className="geo-card">
+                      <div className="geo-grid">
+                        <div className="geo-item">
+                          <span className="geo-label">Flat Pattern</span>
+                          <span className="geo-value">{fmtMm(effectiveGeometry.boundingWidth)} × {fmtMm(effectiveGeometry.boundingHeight)}</span>
                         </div>
-                        <div className="layer-intent-toggle">
-                          {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
-                            <button
-                              key={intent}
-                              className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
-                              onClick={() => setLayerIntents(prev => ({ ...prev, [layer.name]: intent }))}
-                            >{intent}</button>
-                          ))}
+                        <div className="geo-item">
+                          <span className="geo-label">Cut Length</span>
+                          <span className="geo-value">{fmtMm(effectiveGeometry.perimeter)}</span>
+                        </div>
+                        <div className="geo-item">
+                          <span className="geo-label">Pierces</span>
+                          <span className="geo-value">{effectiveGeometry.pierceCount}</span>
+                        </div>
+                        <div className="geo-item">
+                          <span className="geo-label">Bends</span>
+                          <span className="geo-value">{effectiveGeometry.bendCount > 0 ? effectiveGeometry.bendCount : "—"}</span>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  )}
+
+                  {/* Layer intent toggles */}
+                  {activeDxf && activeDxf.dxfData && activeDxf.dxfData.layers.length > 0 && (
+                    <div className="dxf-layers-panel no-print">
+                      <p className="dxf-layers-title">DXF Layers</p>
+                      <p className="dxf-layers-hint">{editing ? "Click lines in viewer or assign below" : "View only — edit to reassign"}</p>
+                      <div className="dxf-layers-list">
+                        {activeDxf!.dxfData!.layers.map(layer => {
+                          const currentIntent = layerIntents[layer.name] || "cut";
+                          return (
+                            <div key={layer.name} className="dxf-layer-row">
+                              <div className="dxf-layer-info">
+                                <div className="dxf-layer-dot" style={{ background: layer.color }} />
+                                <span className="dxf-layer-name">{layer.name}</span>
+                                <span className="dxf-layer-count">({layer.entityCount})</span>
+                              </div>
+                              <div className="layer-intent-toggle">
+                                {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
+                                  <button
+                                    key={intent}
+                                    className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
+                                    onClick={editing ? () => setLayerIntents(prev => ({ ...prev, [layer.name]: intent })) : undefined}
+                                    disabled={!editing}
+                                  >{intent}</button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+            ) : (
+              /* Non-DXF: just show geometry card stacked */
+              effectiveGeometry && (
+                <div className="geo-card" style={{ marginBottom: 16 }}>
+                  <div className="geo-grid">
+                    <div className="geo-item"><span className="geo-label">Flat Pattern</span><span className="geo-value">{fmtMm(effectiveGeometry.boundingWidth)} × {fmtMm(effectiveGeometry.boundingHeight)}</span></div>
+                    <div className="geo-item"><span className="geo-label">Cut Length</span><span className="geo-value">{fmtMm(effectiveGeometry.perimeter)}</span></div>
+                    <div className="geo-item"><span className="geo-label">Pierces</span><span className="geo-value">{effectiveGeometry.pierceCount}</span></div>
+                    <div className="geo-item"><span className="geo-label">Bends</span><span className="geo-value">{effectiveGeometry.bendCount > 0 ? effectiveGeometry.bendCount : "—"}</span></div>
+                  </div>
+                </div>
+              )
+            )}
+
 
             {/* ── Price card ── */}
+
             <div className={`qd-price-card ${editing ? "qd-editing" : ""}`}>
               <div className="qd-price-header">
                 <div>
