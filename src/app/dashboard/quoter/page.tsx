@@ -92,7 +92,6 @@ function DropZone({
         }}
       />
 
-      {/* Animated background glow */}
       <div className="dz-hero-glow" />
 
       {busy ? (
@@ -111,17 +110,6 @@ function DropZone({
           </div>
           <p className="dz-hero-title">Drop your part file to get an instant price</p>
           <p className="dz-hero-sub">Drag &amp; drop or <span className="dz-hero-link">click to browse</span></p>
-          <div className="dz-hero-formats">
-            <span className="dz-format-pill">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              STEP / STP - 3D model
-            </span>
-            <span className="dz-format-divider">{"\u00B7"}</span>
-            <span className="dz-format-pill">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-              DXF - 2D flat pattern
-            </span>
-          </div>
         </>
       )}
     </div>
@@ -133,8 +121,7 @@ function DropZone({
 function GeometryCard({ geo, units }: { geo: PricingGeometry; units: string }) {
   const u = units as "metric" | "imperial";
   return (
-    <div className="geo-card">
-      <h3 className="geo-card-title">Extracted Geometry</h3>
+    <div className="geo-card" style={{ marginBottom: "1rem" }}>
       <div className="geo-grid">
         <div className="geo-item">
           <span className="geo-label">Flat Pattern</span>
@@ -153,9 +140,7 @@ function GeometryCard({ geo, units }: { geo: PricingGeometry; units: string }) {
         <div className="geo-item">
           <span className="geo-label">Bends</span>
           <span className="geo-value">
-            {geo.bendCount > 0
-              ? `${geo.bendCount} (${geo.bendAngles.map((a) => `${Math.round(a)}°`).join(", ")})`
-              : "—"}
+            {geo.bendCount > 0 ? geo.bendCount : "—"}
           </span>
         </div>
         {geo.thickness > 0 && (
@@ -163,16 +148,9 @@ function GeometryCard({ geo, units }: { geo: PricingGeometry; units: string }) {
             <span className="geo-label">Thickness</span>
             <span className={`geo-value ${geo.thicknessConfidence === "detected" ? "detected" : ""}`}>
               {formatLength(geo.thickness, u, 2)}
-              {geo.thicknessConfidence === "detected" && (
-                <span className="geo-auto-badge">auto</span>
-              )}
             </span>
           </div>
         )}
-        <div className="geo-item">
-          <span className="geo-label">Input Type</span>
-          <span className="geo-value uppercase">{geo.inputType}</span>
-        </div>
       </div>
     </div>
   );
@@ -244,33 +222,17 @@ function QuoteBreakdown({
         </div>
       </div>
 
-      {result.warnings.length > 0 && (
-        <div className="quote-warnings">
-          {result.warnings.map((w, i) => (
-            <p key={i} className="quote-warning">⚠️ {w}</p>
-          ))}
-        </div>
-      )}
-
       <div className="quote-save-section">
         <div className="form-field">
           <label>Customer</label>
-          <CustomerSelector
-            userId={userId}
-            value={customerId}
-            onChange={(id) => setCustomerId(id)}
-          />
+          <CustomerSelector userId={userId} value={customerId} onChange={setCustomerId} />
         </div>
         <div className="form-field">
           <label>Notes (optional)</label>
           <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Batch notes..." />
         </div>
-        <button
-          className="btn-primary"
-          onClick={() => onSave(customerId, notes)}
-          disabled={saving}
-        >
-          {saving ? "Saving..." : "💾 Save Quote"}
+        <button className="btn-primary" onClick={() => onSave(customerId, notes)} disabled={saving} style={{ width: "100%" }}>
+          {saving ? "Saving..." : "💾 Save Batch"}
         </button>
       </div>
     </div>
@@ -286,26 +248,16 @@ export default function QuoterPage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const activeItem = items[activeIndex];
 
-  // Global config / lists
   const [materials, setMaterials] = useState<Material[]>([]);
   const [machines, setMachines]   = useState<MachineProfile[]>([]);
   const [userId, setUserId]       = useState<string | null>(null);
   
-  // Default values for new items
   const [defaultMaterialId, setDefaultMaterialId] = useState<string>("");
   const [defaultMachineId, setDefaultMachineId]   = useState<string>("");
   const [defaultMarkup, setDefaultMarkup]         = useState(15);
 
-  const [customerId, setCustomerId] = useState<string | null>(null);
-  const [notes, setNotes] = useState("");
-
-  const [remnantMatches, setRemnantMatches]   = useState<RemnantMatch[]>([]);
-  const [remnantDismissed, setRemnantDismissed] = useState(false);
-  const [usingRemnant, setUsingRemnant]         = useState(false);
-
   const [result, setResult] = useState<PricingResult | null>(null);
 
-  // Load materials + machines + user + defaults
   useEffect(() => {
     async function load() {
       const supabase = createClient();
@@ -321,10 +273,7 @@ export default function QuoterPage() {
       setMaterials(mats ?? []);
       setMachines(machs ?? []);
 
-      if (settings) {
-        setDefaultMarkup(settings.default_markup_percent ?? 15);
-      }
-
+      if (settings) setDefaultMarkup(settings.default_markup_percent ?? 15);
       if (mats && mats.length > 0) setDefaultMaterialId(mats[0].id);
       if (machs && machs.length > 0) {
         const def = machs.find((m) => m.is_default) ?? machs[0];
@@ -334,12 +283,10 @@ export default function QuoterPage() {
     load();
   }, []);
 
-  // Update active item helper
   const updateActiveItem = useCallback((patch: Partial<QuoteItem>) => {
     setItems(prev => prev.map((item, i) => i === activeIndex ? { ...item, ...patch } : item));
   }, [activeIndex]);
 
-  // Compute effective geometry for active item
   const effectiveGeometry = useMemo(() => {
     if (!activeItem) return null;
     const geo = activeItem.geometry;
@@ -351,12 +298,8 @@ export default function QuoterPage() {
 
     geo.dxfData.paths.forEach((p) => {
       const intent = activeItem.pathIntents[p.id] || activeItem.layerIntents[p.layer] || "cut";
-      if (intent === "cut") {
-        newPerimeter += p.length;
-        newPierceCount++;
-      } else if (intent === "bend") {
-        autoBendCount++;
-      }
+      if (intent === "cut") { newPerimeter += p.length; newPierceCount++; }
+      else if (intent === "bend") { autoBendCount++; }
     });
 
     return {
@@ -367,7 +310,7 @@ export default function QuoterPage() {
     };
   }, [activeItem]);
 
-  // Re-compute all price breaks for active item whenever inputs change
+  // Recalculation logic for active item AND all price breaks
   useEffect(() => {
     if (!effectiveGeometry || !activeItem || (phase.name !== "ready" && phase.name !== "saving")) { 
       setResult(null); 
@@ -380,23 +323,15 @@ export default function QuoterPage() {
 
     const geo  = effectiveGeometry;
     let thickMm = activeItem.thickness || geo.thickness || 1;
-
     const feedRate = getFeedRateWithCustom(mach.feed_rates, mat.category, thickMm, mach.power_kw ?? 4);
 
-    // 1. Calculate active tier result
+    // 1. Primary Result
     const r = calculatePrice({
       geometry: { ...geo, thickness: thickMm },
-      materialCostPerKg:  mat.cost_per_kg,
-      materialDensityKgM3: mat.density_kg_m3,
-      scrapValuePerKg:    mat.scrap_value_per_kg ?? 0,
-      machineHourlyRate:  mach.hourly_rate,
-      feedRateMmPerMin:   feedRate,
-      pierceTimeSeconds:  mach.pierce_time_seconds ?? 0.5,
-      setupTimeMinutes:   mach.setup_time_minutes ?? 15,
-      costPerBend:        mach.cost_per_bend ?? 2.5,
-      quantity: activeItem.quantity,
-      markupPercent: activeItem.markup,
-      wasteFactor: usingRemnant ? 1.0 : 1.15,
+      materialCostPerKg: mat.cost_per_kg, materialDensityKgM3: mat.density_kg_m3, scrapValuePerKg: mat.scrap_value_per_kg ?? 0,
+      machineHourlyRate: mach.hourly_rate, feedRateMmPerMin: feedRate, pierceTimeSeconds: mach.pierce_time_seconds ?? 0.5,
+      setupTimeMinutes: mach.setup_time_minutes ?? 15, costPerBend: mach.cost_per_bend ?? 2.5,
+      quantity: activeItem.quantity, markupPercent: activeItem.markup, wasteFactor: 1.15,
     });
     setResult(r);
 
@@ -404,42 +339,35 @@ export default function QuoterPage() {
     const updatedBreaks = activeItem.priceBreaks.map(pb => {
       const tierResult = calculatePrice({
         geometry: { ...geo, thickness: thickMm },
-        materialCostPerKg:  mat.cost_per_kg,
-        materialDensityKgM3: mat.density_kg_m3,
-        scrapValuePerKg:    mat.scrap_value_per_kg ?? 0,
-        machineHourlyRate:  mach.hourly_rate,
-        feedRateMmPerMin:   feedRate,
-        pierceTimeSeconds:  mach.pierce_time_seconds ?? 0.5,
-        setupTimeMinutes:   mach.setup_time_minutes ?? 15,
-        costPerBend:        mach.cost_per_bend ?? 2.5,
-        quantity: pb.quantity,
-        markupPercent: activeItem.markup,
-        wasteFactor: usingRemnant ? 1.0 : 1.15,
+        materialCostPerKg: mat.cost_per_kg, materialDensityKgM3: mat.density_kg_m3, scrapValuePerKg: mat.scrap_value_per_kg ?? 0,
+        machineHourlyRate: mach.hourly_rate, feedRateMmPerMin: feedRate, pierceTimeSeconds: mach.pierce_time_seconds ?? 0.5,
+        setupTimeMinutes: mach.setup_time_minutes ?? 15, costPerBend: mach.cost_per_bend ?? 2.5,
+        quantity: pb.quantity, markupPercent: activeItem.markup, wasteFactor: 1.15,
       });
+
+      const m = pb.overrides.material ?? tierResult.materialCostPerPart;
+      const c = pb.overrides.cutting  ?? tierResult.cuttingCostPerPart;
+      const b = pb.overrides.bending  ?? tierResult.bendingCostPerPart;
+      const s = pb.overrides.setup    ?? tierResult.setupCostPerPart;
+
+      const net = m + c + b + s;
+      const unit = net * (1 + activeItem.markup / 100);
 
       return {
         ...pb,
-        materialCostPerPart: pb.overrides.material ?? tierResult.materialCostPerPart,
-        cuttingCostPerPart: pb.overrides.cutting ?? tierResult.cuttingCostPerPart,
-        bendingCostPerPart: pb.overrides.bending ?? tierResult.bendingCostPerPart,
-        setupCostPerPart: pb.overrides.setup ?? tierResult.setupCostPerPart,
-        setupCostTotal: tierResult.setupCostTotal,
-        unitPrice: tierResult.unitPrice,
-        totalPrice: tierResult.totalPrice,
+        materialCostPerPart: m, cuttingCostPerPart: c, bendingCostPerPart: b, setupCostPerPart: s,
+        setupCostTotal: tierResult.setupCostTotal, unitPrice: unit, totalPrice: unit * pb.quantity,
       };
     });
 
-    // Check if we need to update to avoid infinite loop
     if (JSON.stringify(updatedBreaks) !== JSON.stringify(activeItem.priceBreaks)) {
       updateActiveItem({ priceBreaks: updatedBreaks });
     }
 
-  }, [phase.name, activeItem, effectiveGeometry, materials, machines, usingRemnant, updateActiveItem]);
+  }, [phase.name, activeItem, effectiveGeometry, materials, machines, updateActiveItem]);
 
-  // Handle file drop
   const onFiles = useCallback(async (files: File[]) => {
     setPhase({ name: "analyzing", filenames: files.map(f => f.name) });
-
     const newItems: QuoteItem[] = [];
 
     try {
@@ -453,9 +381,7 @@ export default function QuoterPage() {
         if (ext === "dxf") {
           const text = await file.text();
           geo = parseDXFGeometry(text);
-          if (geo.dxfData) {
-            geo.dxfData.layers.forEach(l => { initialIntents[l.name] = l.intent || "cut"; });
-          }
+          if (geo.dxfData) geo.dxfData.layers.forEach(l => { initialIntents[l.name] = l.intent || "cut"; });
         } else {
           const { getGeometryAPI } = await import("@/lib/worker/geometry-api");
           const api = getGeometryAPI();
@@ -463,33 +389,18 @@ export default function QuoterPage() {
           const buffer = await file.arrayBuffer();
           const raw = await api.extractPricingGeometry(buffer);
           geo = {
-            inputType: "step",
-            boundingWidth:  raw.boundingWidth,
-            boundingHeight: raw.boundingHeight,
-            partArea:       raw.partArea,
-            perimeter:      raw.perimeter,
-            pierceCount:    raw.pierceCount,
-            bendCount:      raw.bendCount,
-            bendAngles:     raw.bendAngles,
-            thickness:      raw.thickness,
+            inputType: "step", boundingWidth: raw.boundingWidth, boundingHeight: raw.boundingHeight,
+            partArea: raw.partArea, perimeter: raw.perimeter, pierceCount: raw.pierceCount,
+            bendCount: raw.bendCount, bendAngles: raw.bendAngles, thickness: raw.thickness,
             thicknessConfidence: raw.thickness > 0 ? "detected" : "required",
           };
         }
 
         newItems.push({
-          id: Math.random().toString(36).substr(2, 9),
-          filename: file.name,
-          geometry: geo,
-          sourceFile: file,
-          materialId: defaultMaterialId,
-          machineId: defaultMachineId,
-          thickness: geo.thickness || 0,
-          quantity: 1,
-          markup: defaultMarkup,
-          layerIntents: initialIntents,
-          pathIntents: {},
-          manualBendCount: null,
-          priceBreaks: [] // Starts empty, quantity is handled by quantity field
+          id: Math.random().toString(36).substr(2, 9), filename: file.name, geometry: geo, sourceFile: file,
+          materialId: defaultMaterialId, machineId: defaultMachineId, thickness: geo.thickness || 0,
+          quantity: 1, markup: defaultMarkup, layerIntents: initialIntents, pathIntents: {},
+          manualBendCount: null, priceBreaks: []
         });
       }
 
@@ -505,7 +416,6 @@ export default function QuoterPage() {
     }
   }, [defaultMaterialId, defaultMachineId, defaultMarkup]);
 
-  // Save quote
   const handleSave = useCallback(async (customerId: string | null, notes: string) => {
     if (phase.name !== "ready" || items.length === 0 || !userId) return;
     setPhase({ name: "saving" });
@@ -525,9 +435,7 @@ export default function QuoterPage() {
 
         let effGeo = item.geometry;
         if (effGeo.inputType === "dxf" && effGeo.dxfData) {
-          let newPerimeter = 0;
-          let newPierceCount = 0;
-          let autoBendCount = 0;
+          let newPerimeter = 0, newPierceCount = 0, autoBendCount = 0;
           effGeo.dxfData.paths.forEach((p) => {
             const intent = item.pathIntents[p.id] || item.layerIntents[p.layer] || "cut";
             if (intent === "cut") { newPerimeter += p.length; newPierceCount++; }
@@ -538,28 +446,20 @@ export default function QuoterPage() {
 
         const r = calculatePrice({
           geometry: { ...effGeo, thickness: thickMm },
-          materialCostPerKg:  mat.cost_per_kg,
-          materialDensityKgM3: mat.density_kg_m3,
-          scrapValuePerKg:    mat.scrap_value_per_kg ?? 0,
-          machineHourlyRate:  mach.hourly_rate,
-          feedRateMmPerMin:   feedRate,
-          pierceTimeSeconds:  mach.pierce_time_seconds ?? 0.5,
-          setupTimeMinutes:   mach.setup_time_minutes ?? 15,
-          costPerBend:        mach.cost_per_bend ?? 2.5,
-          quantity: item.quantity,
-          markupPercent: item.markup,
-          wasteFactor: 1.15,
+          materialCostPerKg: mat.cost_per_kg, materialDensityKgM3: mat.density_kg_m3, scrapValuePerKg: mat.scrap_value_per_kg ?? 0,
+          machineHourlyRate: mach.hourly_rate, feedRateMmPerMin: feedRate, pierceTimeSeconds: mach.pierce_time_seconds ?? 0.5,
+          setupTimeMinutes: mach.setup_time_minutes ?? 15, costPerBend: mach.cost_per_bend ?? 2.5,
+          quantity: item.quantity, markupPercent: item.markup, wasteFactor: 1.15,
         });
 
         let uploadId = null;
         if (item.sourceFile) {
-          const ext = item.sourceFile.name.split(".").pop()?.toLowerCase() || "bin";
-          const path = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-          const { data: uploadData, error: uploadErr } = await supabase.storage.from("step-files").upload(path, item.sourceFile);
-          if (!uploadErr && uploadData) {
+          const path = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${item.sourceFile.name.split(".").pop()}`;
+          const { data: uploadData } = await supabase.storage.from("step-files").upload(path, item.sourceFile);
+          if (uploadData) {
             const { data: dbUpload } = await supabase.from("uploads").insert({
               user_id: userId, filename: item.sourceFile.name, storage_path: path,
-              file_size_bytes: item.sourceFile.size, file_type: ext === "stp" ? "step" : ext, status: "processed"
+              file_size_bytes: item.sourceFile.size, file_type: "processed", status: "processed"
             }).select("id").single();
             if (dbUpload) uploadId = dbUpload.id;
           }
@@ -579,7 +479,6 @@ export default function QuoterPage() {
         if (quoteData && !firstQuoteId) firstQuoteId = quoteData.id;
         if (quoteErr) throw quoteErr;
       }
-
       setPhase({ name: "saved", quoteId: firstQuoteId });
     } catch (err) {
       alert("Failed to save quotes: " + (err instanceof Error ? err.message : String(err)));
@@ -587,13 +486,12 @@ export default function QuoterPage() {
     }
   }, [items, userId, materials, machines]);
 
-  // Tier Management
+  // Tier Management Logic
   const addTier = (qty: number) => {
     if (qty <= 0 || activeItem.priceBreaks.some(pb => pb.quantity === qty)) return;
     updateActiveItem({
       priceBreaks: [...activeItem.priceBreaks, { 
-        quantity: qty, 
-        unitPrice: 0, totalPrice: 0,
+        quantity: qty, unitPrice: 0, totalPrice: 0,
         materialCostPerPart: 0, cuttingCostPerPart: 0, bendingCostPerPart: 0, 
         setupCostPerPart: 0, setupCostTotal: 0,
         overrides: { material: null, cutting: null, bending: null, setup: null }
@@ -607,16 +505,25 @@ export default function QuoterPage() {
     updateActiveItem({ priceBreaks: next });
   };
 
-  // Render
+  const updateOverride = (idx: number, field: keyof PriceBreak["overrides"], val: string) => {
+    const parsed = parseFloat(val);
+    const newVal = isNaN(parsed) ? null : parsed;
+    updateActiveItem({
+      priceBreaks: activeItem.priceBreaks.map((pb, i) => i === idx ? {
+        ...pb, overrides: { ...pb.overrides, [field]: newVal }
+      } : pb)
+    });
+  };
+
   if (phase.name === "saved") {
     return (
       <div className="dash-page">
         <div className="quote-saved-banner">
           <span className="qs-icon">✓</span>
-          <div><h2>Quote Saved</h2><p>Your quote has been saved to the quote history.</p></div>
+          <div><h2>Batch Quote Saved</h2><p>All items have been linked and saved to your history.</p></div>
           <div className="qs-actions">
-            <a href={`/dashboard/quotes/${phase.quoteId}`} className="btn-primary">View Quote {"\u2192"}</a>
-            <button className="btn-ghost" onClick={() => { setItems([]); setActiveIndex(0); setPhase({ name: "idle" }); }}>New Quote</button>
+            <a href={`/dashboard/quotes/${phase.quoteId}`} className="btn-primary">View Quote History {"\u2192"}</a>
+            <button className="btn-ghost" onClick={() => { setItems([]); setActiveIndex(0); setPhase({ name: "idle" }); }}>New Batch</button>
           </div>
         </div>
       </div>
@@ -626,41 +533,20 @@ export default function QuoterPage() {
   return (
     <div className="dash-page">
       <div className="dash-page-header">
-        <div>
-          <h1 className="dash-page-title">Instant Quoter</h1>
-          <p className="dash-page-subtitle">Upload multiple parts to build a complete quote</p>
-        </div>
+        <div><h1 className="dash-page-title">Instant Quoter</h1><p className="dash-page-subtitle">Configure multi-part batches with volume pricing</p></div>
         {items.length > 0 && phase.name === "idle" && (
-          <button className="btn-ghost" onClick={() => setPhase({ name: "ready" })}>{"\u2190"} Back to Quote</button>
+          <button className="btn-ghost" onClick={() => setPhase({ name: "ready" })}>{"\u2190"} Back to Config</button>
         )}
       </div>
 
       {(phase.name === "idle" || phase.name === "analyzing") && (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-          <DropZone onFiles={onFiles} busy={phase.name === "analyzing"} />
-          {phase.name === "analyzing" && (
-            <div className="analyzing-list">
-              <p>Processing files...</p>
-              {phase.filenames.map(f => (
-                <div key={f} className="analyzing-item"><span className="analyzing-dot" />{f}</div>
-              ))}
-            </div>
-          )}
-          {items.length > 0 && phase.name === "idle" && (
-            <div className="idle-items-preview">
-              <p className="preview-label">Current Quote Items ({items.length})</p>
-              <div className="preview-list">
-                {items.map(it => <div key={it.id} className="preview-pill">{it.filename}</div>)}
-              </div>
-            </div>
-          )}
-        </div>
+        <DropZone onFiles={onFiles} busy={phase.name === "analyzing"} />
       )}
 
       {(phase.name === "ready" || phase.name === "saving") && activeItem && (
         <div className="quoter-layout quoter-multi-layout">
           <div className="quoter-items-sidebar no-print">
-            <div className="sidebar-header"><h3 className="sidebar-title">Items</h3><span className="item-count-badge">{items.length}</span></div>
+            <div className="sidebar-header"><h3 className="sidebar-title">Batch Items</h3><span className="item-count-badge">{items.length}</span></div>
             <div className="items-list">
               {items.map((item, idx) => (
                 <button key={item.id} className={`item-tab ${activeIndex === idx ? "active" : ""}`} onClick={() => setActiveIndex(idx)}>
@@ -672,61 +558,115 @@ export default function QuoterPage() {
           </div>
 
           <div className="quoter-left">
+            <div className="quoter-view-container" style={{ height: 500, background: "var(--bg-secondary)", borderRadius: 12, marginBottom: "1rem", overflow: "hidden", position: "relative" }}>
+              <DxfViewer 
+                geometry={activeItem.geometry} 
+                layerIntents={activeItem.layerIntents} 
+                pathIntents={activeItem.pathIntents}
+                onPathClick={(pid, intent) => {
+                  const nextIntent = intent === "cut" ? "bend" : intent === "bend" ? "ignore" : "cut";
+                  updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: nextIntent } });
+                }}
+              />
+            </div>
+
             {effectiveGeometry && <GeometryCard geo={effectiveGeometry} units={units} />}
-            <div className="config-panel" style={{ marginTop: "1rem" }}>
-              <h3 className="config-title">Config: {activeItem.filename}</h3>
+
+            <div className="config-panel">
+              <h3 className="config-title">Basic Configuration</h3>
               <div className="config-grid">
                 <div className="form-field"><label>Material</label>
                   <select value={activeItem.materialId} onChange={(e) => updateActiveItem({ materialId: e.target.value })}>
-                    <option value="">Select Material...</option>
                     {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.grade})</option>)}
                   </select>
                 </div>
                 <div className="form-field"><label>Machine</label>
                   <select value={activeItem.machineId} onChange={(e) => updateActiveItem({ machineId: e.target.value })}>
-                    <option value="">Select Machine...</option>
                     {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
                 </div>
                 <div className="form-field"><label>Primary Quantity</label>
-                  <input type="number" min={1} value={activeItem.quantity} onChange={(e) => updateActiveItem({ quantity: Math.max(1, +e.target.value) })} />
+                  <input type="number" value={activeItem.quantity} onChange={(e) => updateActiveItem({ quantity: Math.max(1, +e.target.value) })} />
                 </div>
                 <div className="form-field"><label>Markup (%)</label>
-                  <input type="number" min={0} value={activeItem.markup} onChange={(e) => updateActiveItem({ markup: Math.max(0, +e.target.value) })} />
+                  <input type="number" value={activeItem.markup} onChange={(e) => updateActiveItem({ markup: Math.max(0, +e.target.value) })} />
                 </div>
-                {activeItem.geometry.inputType === "dxf" && activeItem.geometry.thicknessConfidence !== "detected" && (
-                  <div className="form-field"><label>Thickness (mm)</label>
-                    <input type="number" step="0.1" value={activeItem.thickness} onChange={(e) => updateActiveItem({ thickness: Math.max(0.1, +e.target.value) })} />
-                  </div>
-                )}
               </div>
+            </div>
 
-              {/* Quantity Tiers Manager */}
-              <div style={{ marginTop: "1.5rem", borderTop: "1px solid var(--border-subtle)", paddingTop: "1rem" }}>
-                <label className="section-label">Quantity Tiers / Price Breaks</label>
-                <div className="tier-manager">
-                  <div className="tier-chips">
+            <div className="config-panel" style={{ marginTop: "1rem" }}>
+              <h3 className="config-title">Quantity Tiers &amp; Price Breaks</h3>
+              <div className="tier-manager">
+                <table className="quoter-tier-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 80 }}>Qty</th>
+                      <th>Material</th>
+                      <th>Cutting</th>
+                      <th>Bending</th>
+                      <th>Setup</th>
+                      <th style={{ textAlign: "right" }}>Unit Price</th>
+                      <th style={{ width: 40 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Primary Qty Row (Non-removable but cost-editable) */}
+                    <tr>
+                      <td style={{ fontWeight: 600 }}>{activeItem.quantity} <small>(Base)</small></td>
+                      <td className="tier-val-auto">{formatCurrency(result?.materialCostPerPart ?? 0)}</td>
+                      <td className="tier-val-auto">{formatCurrency(result?.cuttingCostPerPart ?? 0)}</td>
+                      <td className="tier-val-auto">{formatCurrency(result?.bendingCostPerPart ?? 0)}</td>
+                      <td className="tier-val-auto">{formatCurrency(result?.setupCostPerPart ?? 0)}</td>
+                      <td className="tier-val-highlight">{formatCurrency(result?.unitPrice ?? 0)}</td>
+                      <td></td>
+                    </tr>
+                    {/* Additional Tiers */}
                     {activeItem.priceBreaks.map((pb, i) => (
-                      <div key={i} className="tier-chip">
-                        <span>{pb.quantity}</span>
-                        <button className="tier-chip-remove" onClick={() => removeTier(i)}>×</button>
-                      </div>
+                      <tr key={i}>
+                        <td>
+                          <input type="number" className="tier-editable-input" value={pb.quantity} onChange={(e) => updateActiveItem({
+                            priceBreaks: activeItem.priceBreaks.map((p, idx) => idx === i ? { ...p, quantity: Math.max(1, +e.target.value) } : p)
+                          })} style={{ textAlign: "left", width: 60 }} />
+                        </td>
+                        <td className="tier-input-cell">
+                          <input className={`tier-editable-input ${pb.overrides.material !== null ? "overridden" : ""}`}
+                            value={pb.overrides.material ?? pb.materialCostPerPart.toFixed(2)}
+                            onChange={(e) => updateOverride(i, "material", e.target.value)} />
+                          {pb.overrides.material !== null && <button className="tier-reset-btn" onClick={() => updateOverride(i, "material", "")}>×</button>}
+                        </td>
+                        <td className="tier-input-cell">
+                          <input className={`tier-editable-input ${pb.overrides.cutting !== null ? "overridden" : ""}`}
+                            value={pb.overrides.cutting ?? pb.cuttingCostPerPart.toFixed(2)}
+                            onChange={(e) => updateOverride(i, "cutting", e.target.value)} />
+                          {pb.overrides.cutting !== null && <button className="tier-reset-btn" onClick={() => updateOverride(i, "cutting", "")}>×</button>}
+                        </td>
+                        <td className="tier-input-cell">
+                          <input className={`tier-editable-input ${pb.overrides.bending !== null ? "overridden" : ""}`}
+                            value={pb.overrides.bending ?? pb.bendingCostPerPart.toFixed(2)}
+                            onChange={(e) => updateOverride(i, "bending", e.target.value)} />
+                          {pb.overrides.bending !== null && <button className="tier-reset-btn" onClick={() => updateOverride(i, "bending", "")}>×</button>}
+                        </td>
+                        <td className="tier-input-cell">
+                          <input className={`tier-editable-input ${pb.overrides.setup !== null ? "overridden" : ""}`}
+                            value={pb.overrides.setup ?? pb.setupCostPerPart.toFixed(2)}
+                            onChange={(e) => updateOverride(i, "setup", e.target.value)} />
+                          {pb.overrides.setup !== null && <button className="tier-reset-btn" onClick={() => updateOverride(i, "setup", "")}>×</button>}
+                        </td>
+                        <td className="tier-val-highlight">{formatCurrency(pb.unitPrice)}</td>
+                        <td><button className="btn-tier-remove" onClick={() => removeTier(i)}>×</button></td>
+                      </tr>
                     ))}
-                    <input 
-                      type="number" 
-                      className="tier-add-input"
-                      placeholder="+ Qty"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          const val = parseInt((e.target as HTMLInputElement).value);
-                          if (val) { addTier(val); (e.target as HTMLInputElement).value = ""; }
-                        }
-                      }}
-                    />
-                  </div>
-                  <p style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6 }}>
-                    Add extra quantities to generate a price break table.
-                  </p>
+                  </tbody>
+                </table>
+                <div className="tier-add-row">
+                  <input type="number" className="tier-add-input" placeholder="Add Qty..." 
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const val = parseInt((e.target as HTMLInputElement).value);
+                        if (val) { addTier(val); (e.target as HTMLInputElement).value = ""; }
+                      }
+                    }} />
+                  <span style={{ fontSize: 11, color: "var(--text-dim)" }}>Press Enter to add volume break</span>
                 </div>
               </div>
             </div>
@@ -739,10 +679,7 @@ export default function QuoterPage() {
                     const currentIntent = activeItem.layerIntents[layer.name] || "cut";
                     return (
                       <div key={layer.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 6, background: "rgba(255,255,255,0.03)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
-                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: layer.color }} />
-                          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{layer.name}</span>
-                        </div>
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{layer.name}</span>
                         <div className="layer-intent-toggle">
                           {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
                             <button key={intent} className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
@@ -762,7 +699,7 @@ export default function QuoterPage() {
             {result ? (
               <QuoteBreakdown result={result} filename={activeItem.filename} onSave={handleSave} saving={phase.name === "saving"} userId={userId} />
             ) : (
-              <div className="quote-card empty"><p>Configure material and machine to see pricing</p></div>
+              <div className="quote-card empty"><p>Select material/machine to see results</p></div>
             )}
           </div>
         </div>
