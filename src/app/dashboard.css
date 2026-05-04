@@ -2795,7 +2795,18 @@
 
 .tier-input-cell {
   position: relative;
-  min-width: 85px;
+  min-width: 95px;
+}
+
+.tier-input-currency {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--text-dim);
+  pointer-events: none;
+  font-family: var(--font-mono);
 }
 
 .tier-editable-input {
@@ -2803,7 +2814,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  padding: 6px 8px;
+  padding: 6px 8px 6px 20px;
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 12px;

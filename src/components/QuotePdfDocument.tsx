@@ -64,7 +64,7 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
     logo: { width: 140, height: 46, objectFit: 'contain', marginBottom: 8 },
     companyName: { fontSize: 18, fontWeight: 'bold', color: '#111827', marginBottom: 4 },
     companyDetail: { fontSize: 9, color: '#6b7280', marginBottom: 1 },
-    quoteTitle: { fontSize: 22, fontWeight: 'bold', color: brand, marginBottom: 6, letterSpacing: 1 },
+    quoteTitle: { fontSize: 22, fontWeight: 'bold', color: '#1F2937', marginBottom: 6, letterSpacing: 1 },
     metaLabel: { fontSize: 9, color: '#9ca3af', marginBottom: 1 },
     metaValue: { fontSize: 10, color: '#374151', fontWeight: 'bold', marginBottom: 6 },
     brandDivider: { height: 2, backgroundColor: brand, marginBottom: 20, opacity: 0.3 },
@@ -75,7 +75,7 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
     custDetail: { fontSize: 9, color: '#6b7280', marginBottom: 1, lineHeight: 1.4 },
     // Table
     table: { marginBottom: 20 },
-    tableHeader: { flexDirection: 'row', backgroundColor: brand, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 4 },
+    tableHeader: { flexDirection: 'row', backgroundColor: '#1F2937', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 4 },
     tableHeaderText: { fontSize: 7, fontWeight: 'bold', color: '#ffffff', textTransform: 'uppercase' },
     colNum: { width: 20 },
     colDesc: { flex: 1 },
@@ -88,20 +88,24 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
     mainRow: { flexDirection: 'row', paddingHorizontal: 8, marginBottom: 4 },
     tableCell: { fontSize: 8, color: '#374151' },
     tableCellBold: { fontSize: 8, color: '#111827', fontWeight: 'bold' },
+    tableCellSubdued: { fontSize: 7, color: '#9ca3af' },
     subRow: { marginLeft: 28, paddingRight: 8 },
     specLine: { flexDirection: 'row', gap: 15, marginBottom: 6 },
     specText: { fontSize: 7, color: '#9ca3af' },
     tierRow: { flexDirection: 'row', paddingHorizontal: 0, paddingVertical: 2, borderTopWidth: 1, borderTopColor: '#f9fafb' },
     tierLabel: { fontSize: 7, color: '#9ca3af', width: 'auto', flex: 1, textAlign: 'right', paddingRight: 5 },
     // Totals
-    totalsBlock: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 20 },
-    totalsTable: { width: 200 },
+    totalsBlock: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 },
+    totalsTable: { width: 220 },
     totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
     totalLabel: { fontSize: 9, color: '#6b7280' },
     totalValue: { fontSize: 9, color: '#374151', fontWeight: 'bold' },
     grandTotalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, marginTop: 4, borderTopWidth: 2, borderTopColor: brand },
     grandTotalLabel: { fontSize: 12, fontWeight: 'bold', color: '#111827' },
-    grandTotalValue: { fontSize: 12, fontWeight: 'bold', color: brandDark },
+    grandTotalValue: { fontSize: 12, fontWeight: 'bold', color: '#111827' },
+    // CTA
+    ctaSection: { marginTop: 10, alignItems: 'flex-end' },
+    ctaText: { fontSize: 9, color: '#6b7280', fontStyle: 'italic' },
     // Misc
     notesBox: { backgroundColor: brandLight, padding: 12, borderRadius: 6, borderLeftWidth: 3, borderLeftColor: brand, marginTop: 10 },
     notesTitle: { fontSize: 8, fontWeight: 'bold', color: '#374151', marginBottom: 4, textTransform: 'uppercase' },
@@ -183,9 +187,9 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
               
               return (
                 <View key={q.id} wrap={false} style={s.rowContainer}>
-                  {/* Main line: # | Desc | Qty | Lead | Unit | Total */}
+                  {/* Main line (Base Qty): # | Desc | Qty | Lead | Unit | Total - All BOLD */}
                   <View style={s.mainRow}>
-                    <Text style={{ ...s.tableCell, ...s.colNum }}>{i + 1}</Text>
+                    <Text style={{ ...s.tableCellBold, ...s.colNum }}>{i + 1}</Text>
                     <View style={s.colDesc}>
                       <Text style={s.tableCellBold}>{q.filename}</Text>
                       <Text style={{ fontSize: 7, color: '#9ca3af', marginTop: 1 }}>
@@ -193,27 +197,27 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
                       </Text>
                     </View>
                     <Text style={{ ...s.tableCellBold, ...s.colQty }}>{q.quantity}</Text>
-                    <Text style={{ ...s.tableCell, ...s.colLead }}>{q.lead_time || "\u2014"}</Text>
+                    <Text style={{ ...s.tableCellBold, ...s.colLead }}>{q.lead_time || "\u2014"}</Text>
                     <Text style={{ ...s.tableCellBold, ...s.colUnit }}>{fmt(q.unit_price)}</Text>
                     <Text style={{ ...s.tableCellBold, ...s.colTotal }}>{fmt(q.total_price)}</Text>
                   </View>
 
-                  {/* Sub-row: Specs and Additional Tiers */}
+                  {/* Sub-row: Specs (Dimensions only) and Additional Tiers (Subdued) */}
                   <View style={s.subRow}>
                     <View style={s.specLine}>
                       <Text style={s.specText}>Dims: {fmtMm(q.bounding_width_mm)} x {fmtMm(q.bounding_height_mm)}</Text>
                     </View>
 
-                    {/* Additional Quantities rendered directly below within the same block */}
+                    {/* Alternative Quantities (Subdued, No Line Total) */}
                     {tiers.map((pb: any, j: number) => (
                       <View key={j} style={s.tierRow}>
                         <View style={s.colDesc}>
                           <Text style={{ fontSize: 7, color: '#9ca3af' }}>Alternative quantity option:</Text>
                         </View>
-                        <Text style={{ ...s.tableCell, ...s.colQty, fontWeight: 'bold' }}>{pb.quantity}</Text>
-                        <Text style={{ ...s.tableCell, ...s.colLead }}>{pb.leadTime || q.lead_time || "\u2014"}</Text>
-                        <Text style={{ ...s.tableCell, ...s.colUnit, fontWeight: 'bold' }}>{fmt(pb.unitPrice)}</Text>
-                        <Text style={{ ...s.tableCell, ...s.colTotal, fontWeight: 'bold' }}>{fmt(pb.totalPrice)}</Text>
+                        <Text style={{ ...s.tableCellSubdued, ...s.colQty }}>{pb.quantity}</Text>
+                        <Text style={{ ...s.tableCellSubdued, ...s.colLead }}>{pb.leadTime || q.lead_time || "\u2014"}</Text>
+                        <Text style={{ ...s.tableCellSubdued, ...s.colUnit }}>{fmt(pb.unitPrice)}</Text>
+                        <Text style={{ ...s.tableCellSubdued, ...s.colTotal }}></Text>
                       </View>
                     ))}
                   </View>
@@ -226,12 +230,15 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
           <View style={s.totalsBlock}>
             <View style={s.totalsTable}>
               <View style={s.totalRow}>
-                <Text style={s.totalLabel}>Subtotal</Text>
+                <Text style={s.totalLabel}>Subtotal (Base Quantities)</Text>
                 <Text style={s.totalValue}>{fmt(subtotal)}</Text>
               </View>
               <View style={s.grandTotalRow}>
-                <Text style={s.grandTotalLabel}>Total Amount</Text>
+                <Text style={s.grandTotalLabel}>Total Amount (Base Quantities)</Text>
                 <Text style={s.grandTotalValue}>{fmt(subtotal)}</Text>
+              </View>
+              <View style={s.ctaSection}>
+                <Text style={s.ctaText}>To accept this quote, please reply with a Purchase Order referencing {quoteRef}.</Text>
               </View>
             </View>
           </View>
