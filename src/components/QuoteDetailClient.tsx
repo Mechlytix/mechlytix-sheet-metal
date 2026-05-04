@@ -252,32 +252,45 @@ export function QuoteDetailClient({
     setPriceBreaks(prev => prev.map((b, i) => i === idx ? { ...b, quantity: qty } : b));
   };
 
-  // ── Effective Geometry (updates from DXF layers) ──
+  // ── Effective Geometry (updates from DXF layers or quote data) ──
   const effectiveGeometry = useMemo(() => {
-    if (!dxfPreview) return null;
-    if (dxfPreview.inputType !== "dxf" || !dxfPreview.dxfData) return dxfPreview;
+    if (dxfPreview) {
+      if (dxfPreview.inputType !== "dxf" || !dxfPreview.dxfData) return dxfPreview;
 
-    let newPerimeter = 0;
-    let newPierceCount = 0;
-    let autoBendCount = 0;
+      let newPerimeter = 0;
+      let newPierceCount = 0;
+      let autoBendCount = 0;
 
-    dxfPreview.dxfData.paths.forEach(p => {
-      const intent = pathIntents[p.id] || layerIntents[p.layer] || "cut";
-      if (intent === "cut") {
-        newPerimeter += p.length;
-        newPierceCount++;
-      } else if (intent === "bend") {
-        autoBendCount++;
-      }
-    });
+      dxfPreview.dxfData.paths.forEach(p => {
+        const intent = pathIntents[p.id] || layerIntents[p.layer] || "cut";
+        if (intent === "cut") {
+          newPerimeter += p.length;
+          newPierceCount++;
+        } else if (intent === "bend") {
+          autoBendCount++;
+        }
+      });
 
+      return {
+        ...dxfPreview,
+        perimeter: newPerimeter,
+        pierceCount: newPierceCount,
+        bendCount: autoBendCount,
+      };
+    }
+    
+    // Fallback to quote base data
     return {
-      ...dxfPreview,
-      perimeter: newPerimeter,
-      pierceCount: newPierceCount,
-      bendCount: autoBendCount,
-    };
-  }, [dxfPreview, layerIntents, pathIntents]);
+      inputType: quote.input_type,
+      perimeter: quote.perimeter_mm || 0,
+      partArea: quote.part_area_mm2 || 0,
+      boundingWidth: quote.bounding_width_mm || 0,
+      boundingHeight: quote.bounding_height_mm || 0,
+      thickness: quote.thickness_mm || 0,
+      bendCount: quote.bend_count || 0,
+      pierceCount: quote.pierce_count || 0,
+    } as PricingGeometry;
+  }, [dxfPreview, quote, layerIntents, pathIntents]);
 
   // ── Live Recalculation (All Breaks) ──
   React.useEffect(() => {
@@ -501,52 +514,79 @@ export function QuoteDetailClient({
         <div className={`qd-layout ${editing ? "qd-layout--editing" : ""}`}>
           {/* ══ Left column ══ */}
           <div className="qd-left">
-            {/* ── DXF Preview (moved here) ── */}
-            {dxfPreview && (
-              <div className="qd-section-card no-print">
-                <h3 className="qd-section-title">Interactive Preview</h3>
-                <div style={{ height: 550, width: "100%" }}>
-                  <DxfViewer
-                    geometry={effectiveGeometry || dxfPreview}
-                    layerIntents={layerIntents}
-                    pathIntents={pathIntents}
-                    onPathClick={editing ? (id, currentIntent) => {
-                      const next: DXFIntent = currentIntent === "cut" ? "bend" : currentIntent === "bend" ? "ignore" : "cut";
-                      setPathIntents(prev => ({ ...prev, [id]: next }));
-                    } : undefined}
-                  />
+              {/* DXF Viewer Container */}
+              {(dxfPreview || quote.input_type === "dxf") && (
+                <div className="qd-section-card no-print" style={{ padding: 0, overflow: 'hidden', height: 500, background: 'var(--bg-secondary)', borderRadius: 12, marginBottom: 16 }}>
+                  {dxfPreview ? (
+                    <DxfViewer
+                      geometry={effectiveGeometry || dxfPreview}
+                      layerIntents={layerIntents}
+                      pathIntents={pathIntents}
+                      onPathClick={editing ? (id, currentIntent) => {
+                        const next: DXFIntent = currentIntent === "cut" ? "bend" : currentIntent === "bend" ? "ignore" : "cut";
+                        setPathIntents(prev => ({ ...prev, [id]: next }));
+                      } : undefined}
+                    />
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-dim)' }}>
+                      Loading DXF preview...
+                    </div>
+                  )}
                 </div>
+              )}
 
-                {/* Layer toggles — only in edit mode */}
-                {editing && dxfPreview.dxfData && dxfPreview.dxfData.layers.length > 0 && (
-                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-                    <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>DXF Layers</p>
-                    <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "-2px 0 4px" }}>Map layers to operations, or click lines on the drawing.</p>
-                    {dxfPreview.dxfData.layers.map(layer => {
-                      const currentIntent = layerIntents[layer.name] || "cut";
-                      return (
-                        <div key={layer.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 6, background: "rgba(128,128,128,0.06)" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", marginRight: 8 }}>
-                            <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: layer.color }} />
-                            <span style={{ fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{layer.name}</span>
-                            <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>({layer.entityCount})</span>
-                          </div>
-                          <div className="layer-intent-toggle">
-                            {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
-                              <button
-                                key={intent}
-                                className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
-                                onClick={() => setLayerIntents(prev => ({ ...prev, [layer.name]: intent }))}
-                              >{intent}</button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
+              {/* Geometry Stats Card */}
+              {effectiveGeometry && (
+                <div className="quoter-geometry-card" style={{ marginBottom: 16 }}>
+                  <div className="geo-stats-grid">
+                    <div className="geo-stat-item">
+                      <span className="geo-stat-label">Dimensions</span>
+                      <span className="geo-stat-value">{fmtMm(effectiveGeometry.boundingWidth)} × {fmtMm(effectiveGeometry.boundingHeight)}</span>
+                    </div>
+                    <div className="geo-stat-item">
+                      <span className="geo-stat-label">Perimeter</span>
+                      <span className="geo-stat-value">{fmtMm(effectiveGeometry.perimeter)}</span>
+                    </div>
+                    <div className="geo-stat-item">
+                      <span className="geo-stat-label">Area</span>
+                      <span className="geo-stat-value">{(effectiveGeometry.partArea / 1000000).toFixed(2)} m²</span>
+                    </div>
+                    <div className="geo-stat-item">
+                      <span className="geo-stat-label">Pierces</span>
+                      <span className="geo-stat-value">{effectiveGeometry.pierceCount}</span>
+                    </div>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+
+              {/* Layer toggles — only in edit mode */}
+              {editing && dxfPreview && dxfPreview.dxfData && dxfPreview.dxfData.layers.length > 0 && (
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>DXF Layers</p>
+                  <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "-2px 0 4px" }}>Map layers to operations, or click lines on the drawing.</p>
+                  {dxfPreview.dxfData.layers.map(layer => {
+                    const currentIntent = layerIntents[layer.name] || "cut";
+                    return (
+                      <div key={layer.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 6, background: "rgba(128,128,128,0.06)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", marginRight: 8 }}>
+                          <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: layer.color }} />
+                          <span style={{ fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{layer.name}</span>
+                          <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>({layer.entityCount})</span>
+                        </div>
+                        <div className="layer-intent-toggle">
+                          {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
+                            <button
+                              key={intent}
+                              className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
+                              onClick={() => setLayerIntents(prev => ({ ...prev, [layer.name]: intent }))}
+                            >{intent}</button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
             {/* ── Price card ── */}
             <div className={`qd-price-card ${editing ? "qd-editing" : ""}`}>
@@ -694,29 +734,40 @@ export function QuoteDetailClient({
               </div>
             </div>
 
-            {/* ── Geometry ── */}
-            <div className={`qd-section-card ${editing ? "qd-editing" : ""}`}>
-              <h3 className="qd-section-title">Part Geometry</h3>
-              <div className="qd-detail-grid">
-                <div className="qd-detail-item">
-                  <span className="qd-detail-label">Flat Pattern</span>
-                  <span className="qd-detail-value">
-                    {quote.bounding_width_mm != null && quote.bounding_height_mm != null
-                      ? `${fmtMm(quote.bounding_width_mm)} \u00D7 ${fmtMm(quote.bounding_height_mm)}`
-                      : "\u2014"}
-                  </span>
-                </div>
-                <div className="qd-detail-item">
-                  <span className="qd-detail-label">Thickness</span>
-                  {editing ? <NumInput value={thicknessMm} onChange={setThicknessMm} step={0.1} min={0} /> : <span className="qd-detail-value">{fmtMm(quote.thickness_mm)}</span>}
-                </div>
-                <div className="qd-detail-item">
-                  <span className="qd-detail-label">Bends</span>
-                  {editing ? <NumInput value={bendCount} onChange={v => setBendCount(Math.max(0, Math.round(v)))} step={1} min={0} /> : <span className="qd-detail-value">{quote.bend_count ?? 0}</span>}
+            {/* Basic Configuration Panel (Edit mode only) */}
+            {editing && (
+              <div className="config-panel" style={{ marginTop: 16 }}>
+                <h3 className="config-title">Basic Configuration</h3>
+                <div className="config-grid">
+                  <div className="form-field">
+                    <label>Material</label>
+                    <select value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
+                      {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.grade})</option>)}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Machine</label>
+                    <select value={machineId} onChange={(e) => setMachineId(e.target.value)}>
+                      {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Thickness (mm)</label>
+                    <input type="number" step="0.1" value={thicknessMm} onChange={(e) => setThicknessMm(+e.target.value)} />
+                  </div>
+                  <div className="form-field">
+                    <label>Bends</label>
+                    <input type="number" value={bendCount} onChange={(e) => setBendCount(+e.target.value)} />
+                  </div>
+                  <div className="form-field">
+                    <label>Markup (%)</label>
+                    <input type="number" value={markupPercent} onChange={(e) => setMarkupPercent(+e.target.value)} />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
+
 
           {/* ══ Right column ══ */}
           <div className="qd-right">
