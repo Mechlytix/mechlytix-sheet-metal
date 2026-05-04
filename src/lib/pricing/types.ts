@@ -125,6 +125,7 @@ export interface PriceBreak {
   bendingCostPerPart: number;
   setupCostPerPart: number;
   setupCostTotal: number;
+  leadTime?: string;
   /** Manual overrides for this specific break */
   overrides: {
     material: number | null;

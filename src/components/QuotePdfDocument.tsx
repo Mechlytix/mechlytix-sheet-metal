@@ -3,7 +3,7 @@ import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/render
 
 // ─────────────────────────────────────────────────────────
 // QuotePdfDocument — Modern professional quote PDF
-// Consolidated Batch Quote Structure.
+// Consolidated Batch Quote Structure with Lead Times and Tiers.
 // ─────────────────────────────────────────────────────────
 
 function darken(hex: string, amount = 0.15): string {
@@ -76,26 +76,23 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
     // Table
     table: { marginBottom: 20 },
     tableHeader: { flexDirection: 'row', backgroundColor: brand, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 4 },
-    tableHeaderText: { fontSize: 8, fontWeight: 'bold', color: '#ffffff', textTransform: 'uppercase' },
-    colNum: { width: 25 },
+    tableHeaderText: { fontSize: 7, fontWeight: 'bold', color: '#ffffff', textTransform: 'uppercase' },
+    colNum: { width: 20 },
     colDesc: { flex: 1 },
-    colQty: { width: 45, textAlign: 'right' },
-    colUnit: { width: 65, textAlign: 'right' },
-    colTotal: { width: 75, textAlign: 'right' },
+    colQty: { width: 35, textAlign: 'right' },
+    colLead: { width: 60, textAlign: 'right' },
+    colUnit: { width: 60, textAlign: 'right' },
+    colTotal: { width: 70, textAlign: 'right' },
     // Consolidated Row Styles
     rowContainer: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-    mainRow: { flexDirection: 'row', paddingHorizontal: 8, marginBottom: 6 },
-    tableCell: { fontSize: 9, color: '#374151' },
-    tableCellBold: { fontSize: 9, color: '#111827', fontWeight: 'bold' },
-    subRow: { marginLeft: 33, paddingRight: 8 },
+    mainRow: { flexDirection: 'row', paddingHorizontal: 8, marginBottom: 4 },
+    tableCell: { fontSize: 8, color: '#374151' },
+    tableCellBold: { fontSize: 8, color: '#111827', fontWeight: 'bold' },
+    subRow: { marginLeft: 28, paddingRight: 8 },
     specLine: { flexDirection: 'row', gap: 15, marginBottom: 6 },
     specText: { fontSize: 7, color: '#9ca3af' },
-    pbContainer: { marginTop: 4, backgroundColor: '#f9fafb', padding: 8, borderRadius: 4 },
-    pbTitle: { fontSize: 7, fontWeight: 'bold', color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
-    pbGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-    pbItem: { marginRight: 20, marginBottom: 2 },
-    pbQtyLabel: { fontSize: 6, color: '#9ca3af', textTransform: 'uppercase' },
-    pbUnitPrice: { fontSize: 8, fontWeight: 'bold', color: brandDark },
+    tierRow: { flexDirection: 'row', paddingHorizontal: 0, paddingVertical: 2, borderTopWidth: 1, borderTopColor: '#f9fafb' },
+    tierLabel: { fontSize: 7, color: '#9ca3af', width: 'auto', flex: 1, textAlign: 'right', paddingRight: 5 },
     // Totals
     totalsBlock: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 20 },
     totalsTable: { width: 200 },
@@ -176,50 +173,55 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
               <Text style={{ ...s.tableHeaderText, ...s.colNum }}>#</Text>
               <Text style={{ ...s.tableHeaderText, ...s.colDesc }}>Description &amp; Specifications</Text>
               <Text style={{ ...s.tableHeaderText, ...s.colQty }}>Qty</Text>
+              <Text style={{ ...s.tableHeaderText, ...s.colLead }}>Lead Time</Text>
               <Text style={{ ...s.tableHeaderText, ...s.colUnit }}>Unit Price</Text>
               <Text style={{ ...s.tableHeaderText, ...s.colTotal }}>Line Total</Text>
             </View>
 
-            {quotes.map((q, i) => (
-              <View key={q.id} wrap={false} style={s.rowContainer}>
-                {/* Main line: # | Desc | Qty | Unit | Total */}
-                <View style={s.mainRow}>
-                  <Text style={{ ...s.tableCell, ...s.colNum }}>{i + 1}</Text>
-                  <View style={s.colDesc}>
-                    <Text style={s.tableCellBold}>{q.filename}</Text>
-                    <Text style={{ fontSize: 7, color: '#9ca3af', marginTop: 1 }}>
-                      {q.materials?.name} {q.thickness_mm}mm · {q.bend_count} bends
-                    </Text>
-                  </View>
-                  <Text style={{ ...s.tableCellBold, ...s.colQty }}>{q.quantity}</Text>
-                  <Text style={{ ...s.tableCellBold, ...s.colUnit }}>{fmt(q.unit_price)}</Text>
-                  <Text style={{ ...s.tableCellBold, ...s.colTotal }}>{fmt(q.total_price)}</Text>
-                </View>
-
-                {/* Sub-row: Specs and Volume Pricing */}
-                <View style={s.subRow}>
-                  <View style={s.specLine}>
-                    <Text style={s.specText}>Dims: {fmtMm(q.bounding_width_mm)} x {fmtMm(q.bounding_height_mm)}</Text>
-                    <Text style={s.specText}>Cut: {fmtMm(q.perimeter_mm)}</Text>
-                    <Text style={s.specText}>Pierces: {q.pierce_count}</Text>
-                  </View>
-
-                  {q.price_breaks && q.price_breaks.length > 0 && (
-                    <View style={s.pbContainer}>
-                      <Text style={s.pbTitle}>Volume Pricing / Price Breaks</Text>
-                      <View style={s.pbGrid}>
-                        {q.price_breaks.sort((a:any, b:any) => a.quantity - b.quantity).map((pb:any, j:number) => (
-                          <View key={j} style={s.pbItem}>
-                            <Text style={s.pbQtyLabel}>{pb.quantity} Qty</Text>
-                            <Text style={s.pbUnitPrice}>{fmt(pb.unitPrice)}</Text>
-                          </View>
-                        ))}
-                      </View>
+            {quotes.map((q, i) => {
+              const tiers = (q.price_breaks || []).filter((pb: any) => pb.quantity !== q.quantity).sort((a: any, b: any) => a.quantity - b.quantity);
+              
+              return (
+                <View key={q.id} wrap={false} style={s.rowContainer}>
+                  {/* Main line: # | Desc | Qty | Lead | Unit | Total */}
+                  <View style={s.mainRow}>
+                    <Text style={{ ...s.tableCell, ...s.colNum }}>{i + 1}</Text>
+                    <View style={s.colDesc}>
+                      <Text style={s.tableCellBold}>{q.filename}</Text>
+                      <Text style={{ fontSize: 7, color: '#9ca3af', marginTop: 1 }}>
+                        {q.materials?.name} {q.thickness_mm}mm · {q.bend_count} bends
+                      </Text>
                     </View>
-                  )}
+                    <Text style={{ ...s.tableCellBold, ...s.colQty }}>{q.quantity}</Text>
+                    <Text style={{ ...s.tableCell, ...s.colLead }}>{q.lead_time || "\u2014"}</Text>
+                    <Text style={{ ...s.tableCellBold, ...s.colUnit }}>{fmt(q.unit_price)}</Text>
+                    <Text style={{ ...s.tableCellBold, ...s.colTotal }}>{fmt(q.total_price)}</Text>
+                  </View>
+
+                  {/* Sub-row: Specs and Additional Tiers */}
+                  <View style={s.subRow}>
+                    <View style={s.specLine}>
+                      <Text style={s.specText}>Dims: {fmtMm(q.bounding_width_mm)} x {fmtMm(q.bounding_height_mm)}</Text>
+                      <Text style={s.specText}>Cut: {fmtMm(q.perimeter_mm)}</Text>
+                      <Text style={s.specText}>Pierces: {q.pierce_count}</Text>
+                    </View>
+
+                    {/* Additional Quantities rendered directly below within the same block */}
+                    {tiers.map((pb: any, j: number) => (
+                      <View key={j} style={s.tierRow}>
+                        <View style={s.colDesc}>
+                          <Text style={{ fontSize: 7, color: '#9ca3af' }}>Alternative quantity option:</Text>
+                        </View>
+                        <Text style={{ ...s.tableCell, ...s.colQty, fontWeight: 'bold' }}>{pb.quantity}</Text>
+                        <Text style={{ ...s.tableCell, ...s.colLead }}>{pb.leadTime || q.lead_time || "\u2014"}</Text>
+                        <Text style={{ ...s.tableCell, ...s.colUnit, fontWeight: 'bold' }}>{fmt(pb.unitPrice)}</Text>
+                        <Text style={{ ...s.tableCell, ...s.colTotal, fontWeight: 'bold' }}>{fmt(pb.totalPrice)}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
 
           {/* Totals */}

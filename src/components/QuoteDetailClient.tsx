@@ -666,15 +666,17 @@ export function QuoteDetailClient({
                   <table className="qd-breaks-table">
                     <thead>
                       <tr>
-                        <th>Quantity</th>
-                        <th>Unit Price</th>
-                        <th>Total (ex. VAT)</th>
+                        <th>QTY</th>
+                        <th>LEAD TIME</th>
+                        <th>UNIT PRICE</th>
+                        <th>TOTAL (ex. VAT)</th>
                       </tr>
                     </thead>
                     <tbody>
                       {quote.price_breaks.map((pb: any, i: number) => (
                         <tr key={i} className={pb.quantity === quote.quantity ? "current" : ""}>
                           <td>{pb.quantity}</td>
+                          <td>{pb.leadTime || quote.lead_time || "\u2014"}</td>
                           <td>{fmt(pb.unitPrice)}</td>
                           <td>{fmt(pb.totalPrice)}</td>
                         </tr>

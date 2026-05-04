@@ -47,6 +47,7 @@ interface QuoteItem {
   layerIntents: Record<string, DXFIntent>;
   pathIntents: Record<string, DXFIntent>;
   manualBendCount: number | null;
+  leadTime: string;
   priceBreaks: PriceBreak[];
 }
 
@@ -400,7 +401,7 @@ export default function QuoterPage() {
           id: Math.random().toString(36).substr(2, 9), filename: file.name, geometry: geo, sourceFile: file,
           materialId: defaultMaterialId, machineId: defaultMachineId, thickness: geo.thickness || 0,
           quantity: 1, markup: defaultMarkup, layerIntents: initialIntents, pathIntents: {},
-          manualBendCount: null, priceBreaks: []
+          manualBendCount: null, leadTime: "7-10 Days", priceBreaks: []
         });
       }
 
@@ -473,7 +474,7 @@ export default function QuoterPage() {
           quantity: item.quantity, markup_percent: item.markup, material_cost: r.materialCostPerPart,
           cutting_cost: r.cuttingCostPerPart, bending_cost: r.bendingCostPerPart, setup_cost: r.setupCostTotal,
           unit_price: r.unitPrice, total_price: r.totalPrice, customer_id: customerId, notes: notes,
-          status: "draft", upload_id: uploadId, price_breaks: item.priceBreaks
+          status: "draft", upload_id: uploadId, price_breaks: item.priceBreaks, lead_time: item.leadTime
         }).select("id").single();
 
         if (quoteData && !firstQuoteId) firstQuoteId = quoteData.id;
@@ -489,13 +490,14 @@ export default function QuoterPage() {
   // Tier Management Logic
   const addTier = (qty: number) => {
     if (qty <= 0 || activeItem.priceBreaks.some(pb => pb.quantity === qty)) return;
-    updateActiveItem({
-      priceBreaks: [...activeItem.priceBreaks, { 
+    const newTier = { 
         quantity: qty, unitPrice: 0, totalPrice: 0,
         materialCostPerPart: 0, cuttingCostPerPart: 0, bendingCostPerPart: 0, 
-        setupCostPerPart: 0, setupCostTotal: 0,
+        setupCostPerPart: 0, setupCostTotal: 0, leadTime: activeItem.leadTime,
         overrides: { material: null, cutting: null, bending: null, setup: null }
-      }].sort((a,b) => a.quantity - b.quantity)
+    };
+    updateActiveItem({
+      priceBreaks: [...activeItem.priceBreaks, newTier].sort((a,b) => a.quantity - b.quantity)
     });
   };
 
@@ -512,6 +514,12 @@ export default function QuoterPage() {
       priceBreaks: activeItem.priceBreaks.map((pb, i) => i === idx ? {
         ...pb, overrides: { ...pb.overrides, [field]: newVal }
       } : pb)
+    });
+  };
+  
+  const updateTierLeadTime = (idx: number, val: string) => {
+    updateActiveItem({
+      priceBreaks: activeItem.priceBreaks.map((pb, i) => i === idx ? { ...pb, leadTime: val } : pb)
     });
   };
 
@@ -591,6 +599,9 @@ export default function QuoterPage() {
                 <div className="form-field"><label>Markup (%)</label>
                   <input type="number" value={activeItem.markup} onChange={(e) => updateActiveItem({ markup: Math.max(0, +e.target.value) })} />
                 </div>
+                <div className="form-field"><label>Lead Time</label>
+                  <input type="text" value={activeItem.leadTime} onChange={(e) => updateActiveItem({ leadTime: e.target.value })} />
+                </div>
               </div>
             </div>
 
@@ -605,6 +616,7 @@ export default function QuoterPage() {
                       <th>Cutting</th>
                       <th>Bending</th>
                       <th>Setup</th>
+                      <th>Lead Time</th>
                       <th style={{ textAlign: "right" }}>Unit Price</th>
                       <th style={{ width: 40 }}></th>
                     </tr>
@@ -617,6 +629,7 @@ export default function QuoterPage() {
                       <td className="tier-val-auto">{formatCurrency(result?.cuttingCostPerPart ?? 0)}</td>
                       <td className="tier-val-auto">{formatCurrency(result?.bendingCostPerPart ?? 0)}</td>
                       <td className="tier-val-auto">{formatCurrency(result?.setupCostPerPart ?? 0)}</td>
+                      <td className="tier-val-auto">{activeItem.leadTime}</td>
                       <td className="tier-val-highlight">{formatCurrency(result?.unitPrice ?? 0)}</td>
                       <td></td>
                     </tr>
@@ -651,6 +664,9 @@ export default function QuoterPage() {
                             value={pb.overrides.setup ?? pb.setupCostPerPart.toFixed(2)}
                             onChange={(e) => updateOverride(i, "setup", e.target.value)} />
                           {pb.overrides.setup !== null && <button className="tier-reset-btn" onClick={() => updateOverride(i, "setup", "")}>×</button>}
+                        </td>
+                        <td>
+                          <input className="tier-editable-input" value={pb.leadTime ?? ""} onChange={(e) => updateTierLeadTime(i, e.target.value)} />
                         </td>
                         <td className="tier-val-highlight">{formatCurrency(pb.unitPrice)}</td>
                         <td><button className="btn-tier-remove" onClick={() => removeTier(i)}>×</button></td>
