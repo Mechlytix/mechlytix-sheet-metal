@@ -78,6 +78,24 @@ export default async function QuoteDetailPage({ params }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mach = (quote as any).machine_profiles;
 
+  const createdDate = quote.created_at
+    ? new Date(quote.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+    : null;
+
+  const expiresDate = quote.expires_at
+    ? new Date(quote.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+    : null;
+
+  // DXF preview
+  let dxfPreview = null;
+  if (quote.input_type === "dxf" && quote.uploads?.storage_path) {
+    const { data: fileData } = await supabase.storage.from("step-files").download(quote.uploads.storage_path);
+    if (fileData) {
+      const text = await fileData.text();
+      dxfPreview = parseDXFGeometry(text);
+    }
+  }
+
   // Fetch all quotes in the same batch if grouped
   let batchQuotes = [quote];
   if (quote.group_id) {
