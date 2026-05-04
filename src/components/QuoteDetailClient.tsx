@@ -198,8 +198,7 @@ export function QuoteDetailClient({
     }];
   });
 
-  const [selectedBreakIndex, setSelectedBreakIndex] = useState(0);
-  const activeBreak = priceBreaks[selectedBreakIndex] || priceBreaks[0];
+  const primaryBreak = priceBreaks[0] || { quantity: 1, unitPrice: 0, totalPrice: 0 };
 
   const [markupPercent, setMarkupPercent] = useState(quote.markup_percent ?? 15);
   const [thicknessMm, setThicknessMm] = useState(quote.thickness_mm ?? 0);
@@ -217,33 +216,36 @@ export function QuoteDetailClient({
   const [pathIntents, setPathIntents] = useState<Record<string, DXFIntent>>({});
 
   // Helper to clear an override for a specific break
-  const resetOverride = (field: keyof PriceBreak["overrides"]) => {
-    setPriceBreaks(prev => prev.map((b, i) => i === selectedBreakIndex ? {
+  const resetOverride = (idx: number, field: keyof PriceBreak["overrides"]) => {
+    setPriceBreaks(prev => prev.map((b, i) => i === idx ? {
       ...b, overrides: { ...b.overrides, [field]: null }
     } : b));
   };
 
-  const updateOverride = (field: keyof PriceBreak["overrides"], value: number) => {
-    setPriceBreaks(prev => prev.map((b, i) => i === selectedBreakIndex ? {
+  const updateOverride = (idx: number, field: keyof PriceBreak["overrides"], value: number | null) => {
+    setPriceBreaks(prev => prev.map((b, i) => i === idx ? {
       ...b, overrides: { ...b.overrides, [field]: value }
     } : b));
   };
 
-  const handleAddBreak = () => {
-    const last = priceBreaks[priceBreaks.length - 1];
-    const newQty = last ? last.quantity * 2 : 10;
+  const handleAddBreak = (qtyInput: number) => {
+    if (qtyInput <= 0 || priceBreaks.some(pb => pb.quantity === qtyInput)) return;
     setPriceBreaks(prev => [...prev, {
-      ...activeBreak,
-      quantity: newQty,
-      overrides: { ...activeBreak.overrides }
-    }]);
-    setSelectedBreakIndex(priceBreaks.length);
+      quantity: qtyInput,
+      unitPrice: 0,
+      totalPrice: 0,
+      materialCostPerPart: 0,
+      cuttingCostPerPart: 0,
+      bendingCostPerPart: 0,
+      setupCostPerPart: 0,
+      setupCostTotal: 0,
+      overrides: { material: null, cutting: null, bending: null, setup: null, markup: null }
+    }].sort((a,b) => a.quantity - b.quantity));
   };
 
   const handleRemoveBreak = (idx: number) => {
     if (priceBreaks.length <= 1) return;
     setPriceBreaks(prev => prev.filter((_, i) => i !== idx));
-    if (selectedBreakIndex >= idx) setSelectedBreakIndex(Math.max(0, selectedBreakIndex - 1));
   };
 
   const updateBreakQty = (idx: number, qty: number) => {
@@ -305,30 +307,36 @@ export function QuoteDetailClient({
         wasteFactor: 1.15,
       });
 
+      const m = pb.overrides.material ?? r.materialCostPerPart;
+      const c = pb.overrides.cutting  ?? r.cuttingCostPerPart;
+      const b = pb.overrides.bending  ?? r.bendingCostPerPart;
+      const s = pb.overrides.setup    ?? r.setupCostTotal;
+      const mup = pb.overrides.markup ?? markupPercent;
+
+      const net = m + c + b + (s / pb.quantity);
+      const unit = net * (1 + mup / 100);
+
       return {
         ...pb,
-        unitPrice: r.unitPrice,
-        totalPrice: r.totalPrice,
-        materialCostPerPart: r.materialCostPerPart,
-        cuttingCostPerPart: r.cuttingCostPerPart,
-        bendingCostPerPart: r.bendingCostPerPart,
-        setupCostPerPart: r.setupCostPerPart,
-        setupCostTotal: r.setupCostTotal,
+        materialCostPerPart: m,
+        cuttingCostPerPart: c,
+        bendingCostPerPart: b,
+        setupCostTotal: s,
+        setupCostPerPart: s / pb.quantity,
+        unitPrice: unit,
+        totalPrice: unit * pb.quantity,
       };
     });
 
     setPriceBreaks(updatedBreaks);
   }, [editing, effectiveGeometry, materialId, machineId, thicknessMm, markupPercent, materials, machines]);
 
-  // Active costs (considering overrides for the selected break)
-  const activeMaterialCost = activeBreak.overrides.material ?? activeBreak.materialCostPerPart;
-  const activeCuttingCost  = activeBreak.overrides.cutting  ?? activeBreak.cuttingCostPerPart;
-  const activeBendingCost  = activeBreak.overrides.bending  ?? activeBreak.bendingCostPerPart;
-  const activeSetupCost    = activeBreak.overrides.setup    ?? activeBreak.setupCostTotal;
+  // ── Edit-mode summary (based on primary break) ──
+  const unitPrice = primaryBreak.unitPrice;
+  const totalPrice = primaryBreak.totalPrice;
+  const quantity = primaryBreak.quantity;
   
-  const netCost = activeMaterialCost + activeCuttingCost + activeBendingCost + (activeSetupCost / Math.max(activeBreak.quantity, 1));
-  const unitPrice = netCost * (1 + markupPercent / 100);
-  const totalPrice = unitPrice * activeBreak.quantity;
+  const netCost = (primaryBreak.materialCostPerPart) + (primaryBreak.cuttingCostPerPart) + (primaryBreak.bendingCostPerPart) + (primaryBreak.setupCostPerPart);
   const grossMargin = unitPrice > 0 ? ((unitPrice - netCost) / unitPrice * 100) : null;
 
   // ── View-mode prices (from server data) ──
@@ -345,9 +353,8 @@ export function QuoteDetailClient({
       bendingCostPerPart: quote.bending_cost || 0,
       setupCostPerPart: (quote.setup_cost || 0) / (quote.quantity || 1),
       setupCostTotal: quote.setup_cost || 0,
-      overrides: { material: null, cutting: null, bending: null, setup: null }
+      overrides: { material: null, cutting: null, bending: null, setup: null, markup: null }
     }]);
-    setSelectedBreakIndex(0);
     setMarkupPercent(quote.markup_percent ?? 15);
     setThicknessMm(quote.thickness_mm ?? 0);
     setPierceCount(quote.pierce_count ?? 0);
@@ -548,7 +555,7 @@ export function QuoteDetailClient({
                     <span className="qd-per-part">/ part</span>
                   </div>
                   <p className="qd-total-line">
-                    Qty {editing ? activeBreak.quantity : (quote.quantity ?? 1)} {"\u00D7"} {fmt(editing ? unitPrice : quote.unit_price)} ={" "}
+                    Qty {editing ? quantity : (quote.quantity ?? 1)} {"\u00D7"} {fmt(editing ? unitPrice : quote.unit_price)} ={" "}
                     <strong>{fmt(editing ? totalPrice : quote.total_price)}</strong>
                   </p>
                 </div>
@@ -562,151 +569,126 @@ export function QuoteDetailClient({
                 </div>
               </div>
 
-              {/* Price Breaks Selection (Edit Mode) */}
-              {editing && (
-                <div className="qd-breaks-manager no-print">
-                  <p className="qd-section-subtitle">Quantity Tiers</p>
-                  <div className="qd-breaks-list">
-                    {priceBreaks.map((pb, idx) => (
-                      <div key={idx} className={`qd-break-item ${selectedBreakIndex === idx ? "active" : ""}`}>
-                        <button className="qd-break-select" onClick={() => setSelectedBreakIndex(idx)}>
-                          <span className="qty">{pb.quantity}</span>
-                          <span className="price">{fmt(pb.unitPrice)}</span>
-                        </button>
-                        {priceBreaks.length > 1 && (
-                          <button className="qd-break-remove" onClick={(e) => { e.stopPropagation(); handleRemoveBreak(idx); }}>✕</button>
-                        )}
-                      </div>
-                    ))}
-                    <button className="qd-add-break" onClick={handleAddBreak}>+ Tier</button>
-                  </div>
+              {/* Pricing Tiers Table */}
+              <div className="qd-pricing-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 className="qd-section-title" style={{ margin: 0 }}>Pricing Tiers</h3>
+                  {!editing && (
+                    <div className="qd-badges">
+                      <span className="input-type-badge">{quote.input_type}</span>
+                      {viewGrossMargin != null && (
+                        <span className="qd-margin-badge">
+                          {viewGrossMargin.toFixed(0)}% margin
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {/* Cost breakdown */}
-              <div className="qd-breakdown">
-                <h3 className="qd-section-title">
-                  {editing ? `Costs for Qty ${activeBreak.quantity}` : "Cost Breakdown"}
-                </h3>
-                {editing ? (
-                  <>
-                    <div className="breakdown-row">
-                      <span className="breakdown-label">Material</span>
-                      <CostInput 
-                        value={activeMaterialCost} 
-                        onChange={v => updateOverride("material", v)} 
-                        onReset={() => resetOverride("material")}
-                        isOverridden={activeBreak.overrides.material !== null}
-                        min={0}
-                      />
-                    </div>
-                    <div className="breakdown-row">
-                      <span className="breakdown-label">Cutting</span>
-                      <CostInput 
-                        value={activeCuttingCost} 
-                        onChange={v => updateOverride("cutting", v)} 
-                        onReset={() => resetOverride("cutting")}
-                        isOverridden={activeBreak.overrides.cutting !== null}
-                        min={0}
-                      />
-                    </div>
-                    <div className="breakdown-row">
-                      <span className="breakdown-label">Bending</span>
-                      <CostInput 
-                        value={activeBendingCost} 
-                        onChange={v => updateOverride("bending", v)} 
-                        onReset={() => resetOverride("bending")}
-                        isOverridden={activeBreak.overrides.bending !== null}
-                        min={0}
-                      />
-                    </div>
-                    <div className="breakdown-row">
-                      <span className="breakdown-label">Setup (total)</span>
-                      <CostInput 
-                        value={activeSetupCost} 
-                        onChange={v => updateOverride("setup", v)} 
-                        onReset={() => resetOverride("setup")}
-                        isOverridden={activeBreak.overrides.setup !== null}
-                        min={0}
-                      />
-                    </div>
-                    <div className="breakdown-row net">
-                      <span className="breakdown-label">Net cost (per part)</span>
-                      <span className="breakdown-value">{fmt(netCost)}</span>
-                    </div>
-                    <div className="breakdown-row markup">
-                      <span className="breakdown-label">Markup</span>
-                      <NumInput value={markupPercent} onChange={setMarkupPercent} prefix="%" step={1} min={0} />
-                    </div>
-                    <div className="breakdown-row">
-                      <span className="breakdown-label">Quantity</span>
-                      <NumInput 
-                        value={activeBreak.quantity} 
-                        onChange={v => updateBreakQty(selectedBreakIndex, Math.max(1, Math.round(v)))} 
-                        step={1} min={1} 
-                      />
-                    </div>
-                    <div className="breakdown-row total-row">
-                      <span className="breakdown-label">Unit Price</span>
-                      <span className="breakdown-value highlight">{fmt(unitPrice)}</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {[
-                      { label: "Material", value: quote.material_cost, note: quote.thickness_mm != null ? `${quote.thickness_mm}mm` : null },
-                      { label: "Cutting", value: quote.cutting_cost, note: null },
-                      { label: "Bending", value: quote.bending_cost, note: quote.bend_count != null && quote.bend_count > 0 ? `${quote.bend_count} bends` : null },
-                      { label: "Setup (total)", value: quote.setup_cost, note: null },
-                    ].map(row => row.value != null && row.value > 0 ? (
-                      <div key={row.label} className="breakdown-row">
-                        <span className="breakdown-label">{row.label}</span>
-                        {row.note && <span className="breakdown-note">{row.note}</span>}
-                        <span className="breakdown-value">{fmt(row.value)}</span>
-                      </div>
-                    ) : null)}
-                    <div className="breakdown-row net">
-                      <span className="breakdown-label">Net cost (per part)</span>
-                      <span className="breakdown-value">{fmt(viewNetCost)}</span>
-                    </div>
-                    <div className="breakdown-row markup">
-                      <span className="breakdown-label">Markup ({quote.markup_percent ?? "\u2014"}%)</span>
-                      <span className="breakdown-value">+{quote.unit_price != null ? fmt(quote.unit_price - viewNetCost) : "\u2014"}</span>
-                    </div>
-                    <div className="breakdown-row total-row">
-                      <span className="breakdown-label">Unit Price</span>
-                      <span className="breakdown-value highlight">{fmt(quote.unit_price)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* View Mode: Price breaks table */}
-              {!editing && quote.price_breaks && quote.price_breaks.length > 1 && (
-                <div className="qd-view-breaks">
-                  <h3 className="qd-section-title">Pricing Options</h3>
-                  <table className="qd-breaks-table">
+                <div className="quoter-tier-table-wrapper">
+                  <table className="quoter-tier-table">
                     <thead>
                       <tr>
-                        <th>QTY</th>
-                        <th>LEAD TIME</th>
-                        <th>UNIT PRICE</th>
-                        <th>TOTAL (ex. VAT)</th>
+                        <th style={{ textAlign: "left", width: 80 }}>QTY</th>
+                        <th style={{ textAlign: "right" }}>MATERIAL</th>
+                        <th style={{ textAlign: "right" }}>CUTTING</th>
+                        <th style={{ textAlign: "right" }}>BENDING</th>
+                        <th style={{ textAlign: "right" }}>SETUP</th>
+                        <th style={{ textAlign: "right", width: 90 }}>MARKUP %</th>
+                        <th style={{ textAlign: "left", paddingLeft: "1.5rem" }}>LEAD TIME</th>
+                        <th style={{ textAlign: "right" }}>UNIT PRICE</th>
+                        {editing && <th style={{ width: 40 }}></th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {quote.price_breaks.map((pb: any, i: number) => (
-                        <tr key={i} className={pb.quantity === quote.quantity ? "current" : ""}>
-                          <td>{pb.quantity}</td>
-                          <td>{pb.leadTime || quote.lead_time || "\u2014"}</td>
-                          <td>{fmt(pb.unitPrice)}</td>
-                          <td>{fmt(pb.totalPrice)}</td>
+                      {priceBreaks.map((pb, i) => (
+                        <tr key={i} className={!editing && pb.quantity === quote.quantity ? "current" : ""}>
+                          <td>
+                            {editing ? (
+                              <input 
+                                type="number" 
+                                className="tier-editable-input" 
+                                value={pb.quantity} 
+                                onChange={(e) => updateBreakQty(i, Math.max(1, +e.target.value))} 
+                                style={{ textAlign: "left", width: 60 }} 
+                              />
+                            ) : (
+                              <span style={{ fontWeight: 600 }}>{pb.quantity}</span>
+                            )}
+                          </td>
+                          <td className="tier-val-auto">{fmt(pb.materialCostPerPart)}</td>
+                          <td className="tier-val-auto">{fmt(pb.cuttingCostPerPart)}</td>
+                          <td className="tier-val-auto">{fmt(pb.bendingCostPerPart)}</td>
+                          <td className="tier-val-auto">{fmt(pb.setupCostPerPart)}</td>
+                          <td className="tier-input-cell">
+                            {editing ? (
+                              <>
+                                <input 
+                                  className={`tier-editable-input ${pb.overrides.markup !== null ? "overridden" : ""}`}
+                                  value={pb.overrides.markup ?? markupPercent}
+                                  onChange={(e) => {
+                                    const v = parseFloat(e.target.value);
+                                    updateOverride(i, "markup", isNaN(v) ? null : v);
+                                  }}
+                                  style={{ textAlign: "right", paddingRight: 16 }} 
+                                />
+                                <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--text-dim)" }}>%</span>
+                              </>
+                            ) : (
+                              <span>{pb.overrides.markup ?? markupPercent}%</span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: "left", paddingLeft: "1.5rem" }}>
+                            {editing ? (
+                              <input 
+                                className="tier-editable-input" 
+                                value={pb.leadTime ?? ""} 
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setPriceBreaks(prev => prev.map((b, idx) => idx === i ? { ...b, leadTime: val } : b));
+                                }} 
+                                style={{ textAlign: "left" }} 
+                              />
+                            ) : (
+                              <span>{pb.leadTime || quote.lead_time || "\u2014"}</span>
+                            )}
+                          </td>
+                          <td className="tier-val-highlight">{fmt(pb.unitPrice)}</td>
+                          {editing && (
+                            <td>
+                              {priceBreaks.length > 1 && (
+                                <button className="btn-tier-remove" onClick={() => handleRemoveBreak(i)}>×</button>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  {editing && (
+                    <div className="tier-add-row">
+                      <input 
+                        type="number" 
+                        className="tier-add-input" 
+                        placeholder="Add Qty..." 
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleAddBreak(+e.currentTarget.value);
+                            e.currentTarget.value = "";
+                          }
+                        }}
+                      />
+                      <button className="btn-tier-add" onClick={(e) => {
+                        const input = e.currentTarget.previousSibling as HTMLInputElement;
+                        if (input.value) {
+                          handleAddBreak(+input.value);
+                          input.value = "";
+                        }
+                      }}>Add Tier</button>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* ── Geometry ── */}
