@@ -20,6 +20,23 @@ export default async function QuotesPage() {
     .order("created_at", { ascending: false })
     .limit(100);
 
+  // Group quotes by quote_number (or id if missing)
+  const grouped = (quotes || []).reduce((acc: any[], q) => {
+    const existing = acc.find(item => item.quote_number === q.quote_number && q.quote_number != null);
+    if (existing) {
+      existing.isBatch = true;
+      existing.childCount = (existing.childCount || 1) + 1;
+      existing.total_price = (existing.total_price || 0) + (q.total_price || 0);
+      existing.quantity = (existing.quantity || 0) + (q.quantity || 0);
+      // Keep track of materials/thickness to see if they match
+      if (existing.thickness_mm !== q.thickness_mm) existing.thickness_mm = "Mixed";
+      if (existing.bend_count !== q.bend_count) existing.bend_count = "Mixed";
+      return acc;
+    }
+    acc.push({ ...q, isBatch: false, childCount: 1 });
+    return acc;
+  }, []);
+
   function StatusBadge({ status }: { status: string }) {
     const map: Record<string, string> = {
       draft: "badge-neutral", sent: "badge-blue",
@@ -33,12 +50,14 @@ export default async function QuotesPage() {
       <div className="dash-page-header">
         <div>
           <h1 className="dash-page-title">Quotes</h1>
-          <p className="dash-page-subtitle">{quotes?.length ?? 0} quotes total</p>
+          <p className="dash-page-subtitle">{quotes?.length ?? 0} items across {grouped.length} quotations</p>
         </div>
-        <Link href="/dashboard/quoter" className="btn-primary">⚡ New Quote</Link>
+        <div className="dash-page-actions">
+          <Link href="/dashboard/quoter" className="btn-primary">⚡ New Quote</Link>
+        </div>
       </div>
 
-      {!quotes || quotes.length === 0 ? (
+      {grouped.length === 0 ? (
         <div className="empty-state">
           <p>No quotes yet.</p>
           <Link href="/dashboard/quoter" className="btn-primary">Create your first quote →</Link>
@@ -48,39 +67,46 @@ export default async function QuotesPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>File</th>
+                <th>Quote #</th>
+                <th>Main File / Batch</th>
                 <th>Type</th>
                 <th>Material</th>
                 <th>Thickness</th>
                 <th>Bends</th>
-                <th>Qty</th>
-                <th>Unit Price</th>
-                <th>Total</th>
+                <th>Parts</th>
+                <th>Total (ex. VAT)</th>
                 <th>Customer</th>
                 <th>Status</th>
                 <th>Date</th>
               </tr>
             </thead>
             <tbody>
-              {quotes.map((q) => (
+              {grouped.map((q) => (
                 <tr key={q.id} className="quote-row-link">
                   <td colSpan={11} style={{ padding: 0 }}>
                     <Link href={`/dashboard/quotes/${q.id}`} className="quote-row-inner">
+                      <span className="td-quote-number">{q.quote_number || "—"}</span>
                       <span className="td-filename">
-                        {q.filename}
-                        {q.quote_number && <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: 6 }}>{q.quote_number}</span>}
+                        {q.isBatch ? (
+                          <span className="batch-label">
+                            <span className="batch-icon">📦</span> 
+                            {q.filename} <span className="batch-count">+{q.childCount - 1} more</span>
+                          </span>
+                        ) : (
+                          q.filename
+                        )}
                       </span>
                       <span><span className="input-type-badge">{q.input_type}</span></span>
                       <span className="td-muted">
-                        {/* @ts-expect-error — joined relation */}
                         {q.materials ? q.materials.name : "—"}
                       </span>
                       <span className="td-muted">
-                        {q.thickness_mm != null ? `${q.thickness_mm}mm` : "—"}
+                        {q.thickness_mm === "Mixed" ? "Mixed" : (q.thickness_mm != null ? `${q.thickness_mm}mm` : "—")}
                       </span>
-                      <span className="td-muted">{q.bend_count ?? "—"}</span>
+                      <span className="td-muted">
+                        {q.bend_count === "Mixed" ? "Mixed" : (q.bend_count ?? "—")}
+                      </span>
                       <span>{q.quantity ?? 1}</span>
-                      <span>{q.unit_price != null ? `£${q.unit_price.toFixed(2)}` : "—"}</span>
                       <span className="td-price">{q.total_price != null ? `£${q.total_price.toFixed(2)}` : "—"}</span>
                       <span className="td-muted">{q.customer_name ?? "—"}</span>
                       <span><StatusBadge status={q.status ?? "draft"} /></span>

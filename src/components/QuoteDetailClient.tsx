@@ -452,6 +452,8 @@ export function QuoteDetailClient({
                 {quote.quote_number && <strong>{quote.quote_number}</strong>}
                 {quote.quote_number && " \u00B7 "}
                 Created {createdDate}
+                {expiresDate && " \u00B7 "}
+                {expiresDate && <span style={{ color: "var(--brand-primary)", fontWeight: 500 }}>Valid until {expiresDate}</span>}
               </p>
             )}
           </div>
@@ -490,6 +492,7 @@ export function QuoteDetailClient({
           <div>
             <p className="qd-print-ref">Quote Reference: {quote.id.slice(0, 8).toUpperCase()}</p>
             {createdDate && <p className="qd-print-date">Date: {createdDate}</p>}
+            {expiresDate && <p className="qd-print-date">Valid Until: {expiresDate}</p>}
           </div>
         </div>
 
