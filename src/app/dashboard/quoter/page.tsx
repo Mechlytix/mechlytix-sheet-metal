@@ -666,7 +666,7 @@ export default function QuoterPage() {
                         if (val) { addTier(val); (e.target as HTMLInputElement).value = ""; }
                       }
                     }} />
-                  <span style={{ fontSize: 11, color: "var(--text-dim)" }}>Press Enter to add volume break</span>
+                  <span className="tier-add-hint">Press Enter to add volume break</span>
                 </div>
               </div>
             </div>

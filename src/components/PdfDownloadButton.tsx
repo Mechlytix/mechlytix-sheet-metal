@@ -11,30 +11,29 @@ const PDFDownloadLink = dynamic(
 );
 
 interface PdfDownloadButtonProps {
-  quote: any;
+  quotes: any[];
   profile: any;
-  mat: any;
-  mach: any;
   brandColor?: string;
   customer?: any;
 }
 
-export function PdfDownloadButton({ quote, profile, mat, mach, brandColor, customer }: PdfDownloadButtonProps) {
+export function PdfDownloadButton({ quotes, profile, brandColor, customer }: PdfDownloadButtonProps) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
+  if (!mounted || !quotes || quotes.length === 0) {
     return <button className="btn-ghost" disabled>Loading PDF...</button>;
   }
 
+  const quote = quotes[0];
   const ref = quote.quote_number || quote.id.slice(0, 8).toUpperCase();
 
   return (
     <PDFDownloadLink
-      document={<QuotePdfDocument quote={quote} profile={profile} mat={mat} mach={mach} brandColor={brandColor} customer={customer} />}
+      document={<QuotePdfDocument quotes={quotes} profile={profile} brandColor={brandColor} customer={customer} />}
       fileName={`Quote-${ref}-${quote.filename}.pdf`}
       className="btn-ghost"
     >

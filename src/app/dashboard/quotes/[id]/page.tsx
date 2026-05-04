@@ -78,27 +78,25 @@ export default async function QuoteDetailPage({ params }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mach = (quote as any).machine_profiles;
 
-  const createdDate = quote.created_at
-    ? new Date(quote.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-    : null;
-
-  const expiresDate = quote.expires_at
-    ? new Date(quote.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-    : null;
-
-  // DXF preview
-  let dxfPreview = null;
-  if (quote.input_type === "dxf" && quote.uploads?.storage_path) {
-    const { data: fileData } = await supabase.storage.from("step-files").download(quote.uploads.storage_path);
-    if (fileData) {
-      const text = await fileData.text();
-      dxfPreview = parseDXFGeometry(text);
-    }
+  // Fetch all quotes in the same batch if grouped
+  let batchQuotes = [quote];
+  if (quote.group_id) {
+    const { data: batch } = await supabase
+      .from("quotes")
+      .select(`
+        *,
+        materials ( id, name, grade, category, color_hex, cost_per_kg, density_kg_m3, scrap_value_per_kg ),
+        machine_profiles:machine_id ( id, name, machine_type, hourly_rate, power_kw, feed_rates, pierce_time_seconds, setup_time_minutes, cost_per_bend )
+      `)
+      .eq("group_id", quote.group_id)
+      .order("created_at", { ascending: true });
+    if (batch && batch.length > 0) batchQuotes = batch;
   }
 
   return (
     <QuoteDetailClient
       quote={quote}
+      batchQuotes={batchQuotes}
       mat={mat}
       mach={mach}
       customer={customer}

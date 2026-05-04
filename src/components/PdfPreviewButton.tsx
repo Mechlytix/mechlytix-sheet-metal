@@ -11,27 +11,25 @@ const BlobProvider = dynamic(
 );
 
 interface PdfPreviewButtonProps {
-  quote: any;
+  quotes: any[];
   profile: any;
-  mat: any;
-  mach: any;
   brandColor?: string;
   customer?: any;
 }
 
-export function PdfPreviewButton({ quote, profile, mat, mach, brandColor, customer }: PdfPreviewButtonProps) {
+export function PdfPreviewButton({ quotes, profile, brandColor, customer }: PdfPreviewButtonProps) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
+  if (!mounted || !quotes || quotes.length === 0) {
     return <button className="btn-ghost" disabled>Loading...</button>;
   }
 
   return (
-    <BlobProvider document={<QuotePdfDocument quote={quote} profile={profile} mat={mat} mach={mach} brandColor={brandColor} customer={customer} />}>
+    <BlobProvider document={<QuotePdfDocument quotes={quotes} profile={profile} brandColor={brandColor} customer={customer} />}>
       {({ url, loading, error }) => {
         if (loading) {
           return <button className="btn-ghost" disabled>Loading PDF...</button>;

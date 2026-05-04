@@ -39,6 +39,7 @@ type Quote = Record<string, any>;
 
 interface Props {
   quote: Quote;
+  batchQuotes: Quote[];
   mat: Material | null;
   mach: Machine | null;
   customer: Record<string, unknown> | null;
@@ -171,7 +172,7 @@ function NumInput({ value, onChange, prefix, step = 0.01, min = 0 }: {
    ───────────────────────────────────────────────────────── */
 
 export function QuoteDetailClient({
-  quote, mat, mach, customer, profile, brandColor,
+  quote, batchQuotes, mat, mach, customer, profile, brandColor,
   userId, createdDate, expiresDate, dxfPreview,
   materials, machines,
 }: Props) {
@@ -442,8 +443,8 @@ export function QuoteDetailClient({
                 <button onClick={handleCancel} className="btn-ghost" style={{ fontSize: 13 }}>Cancel</button>
               </>
             )}
-            <PdfPreviewButton quote={quote} profile={profile} mat={mat} mach={mach} brandColor={brandColor} customer={customer} />
-            <PdfDownloadButton quote={quote} profile={profile} mat={mat} mach={mach} brandColor={brandColor} customer={customer} />
+            <PdfPreviewButton quotes={batchQuotes} profile={profile} brandColor={brandColor} customer={customer} />
+            <PdfDownloadButton quotes={batchQuotes} profile={profile} brandColor={brandColor} customer={customer} />
           </div>
         </div>
 
