@@ -202,8 +202,6 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
                   <View style={s.subRow}>
                     <View style={s.specLine}>
                       <Text style={s.specText}>Dims: {fmtMm(q.bounding_width_mm)} x {fmtMm(q.bounding_height_mm)}</Text>
-                      <Text style={s.specText}>Cut: {fmtMm(q.perimeter_mm)}</Text>
-                      <Text style={s.specText}>Pierces: {q.pierce_count}</Text>
                     </View>
 
                     {/* Additional Quantities rendered directly below within the same block */}

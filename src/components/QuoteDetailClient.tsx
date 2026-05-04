@@ -374,7 +374,7 @@ export function QuoteDetailClient({
     // We use the first price break as the "primary" for legacy flat columns
     const primary = priceBreaks[0];
 
-    const { error } = await supabase.from("quotes").update({
+    const updateData: any = {
       material_cost: primary.overrides.material ?? primary.materialCostPerPart,
       cutting_cost: primary.overrides.cutting ?? primary.cuttingCostPerPart,
       bending_cost: primary.overrides.bending ?? primary.bendingCostPerPart,
@@ -394,9 +394,31 @@ export function QuoteDetailClient({
       expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
       notes: notes.trim() || null,
       updated_at: new Date().toISOString(),
-    }).eq("id", quote.id);
+    };
+
+    // If we have a linked customer, we should probably null out the denormalized strings
+    // to ensure the UI prefers the joined customer data.
+    if (customerId) {
+      updateData.customer_name = null;
+      updateData.customer_email = null;
+    }
+
+    const { error } = await supabase.from("quotes").update(updateData).eq("id", quote.id);
 
     if (error) { alert("Failed to save: " + error.message); setSaving(false); return; }
+
+    // If part of a batch, update the shared metadata for the rest of the batch
+    if (quote.group_id) {
+      await supabase.from("quotes").update({
+        customer_id: customerId || null,
+        customer_ref: customerRef.trim() || null,
+        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+        notes: notes.trim() || null,
+        // Also clear denormalized fields for the batch
+        ...(customerId ? { customer_name: null, customer_email: null } : {})
+      }).eq("group_id", quote.group_id).neq("id", quote.id);
+    }
+
     setSaving(false);
     setEditing(false);
     router.refresh();
@@ -704,20 +726,6 @@ export function QuoteDetailClient({
                   {editing ? <NumInput value={thicknessMm} onChange={setThicknessMm} step={0.1} min={0} /> : <span className="qd-detail-value">{fmtMm(quote.thickness_mm)}</span>}
                 </div>
                 <div className="qd-detail-item">
-                  <span className="qd-detail-label">Cut Length</span>
-                  <span className="qd-detail-value">{fmtMm(quote.perimeter_mm)}</span>
-                </div>
-                <div className="qd-detail-item">
-                  <span className="qd-detail-label">Part Area</span>
-                  <span className="qd-detail-value">
-                    {quote.part_area_mm2 != null ? `${(quote.part_area_mm2 / 100).toFixed(0)} cm\u00B2` : "\u2014"}
-                  </span>
-                </div>
-                <div className="qd-detail-item">
-                  <span className="qd-detail-label">Pierces</span>
-                  {editing ? <NumInput value={pierceCount} onChange={v => setPierceCount(Math.max(0, Math.round(v)))} step={1} min={0} /> : <span className="qd-detail-value">{quote.pierce_count ?? 0}</span>}
-                </div>
-                <div className="qd-detail-item">
                   <span className="qd-detail-label">Bends</span>
                   {editing ? <NumInput value={bendCount} onChange={v => setBendCount(Math.max(0, Math.round(v)))} step={1} min={0} /> : <span className="qd-detail-value">{quote.bend_count ?? 0}</span>}
                 </div>
@@ -759,8 +767,8 @@ export function QuoteDetailClient({
                 </div>
               ) : (
                 <div className="qd-detail-list">
-                  <div className="qd-detail-row"><span className="qd-dl-label">Name</span><span className="qd-dl-value">{quote.customer_name ?? "\u2014"}</span></div>
-                  <div className="qd-detail-row"><span className="qd-dl-label">Email</span><span className="qd-dl-value">{quote.customer_email ? <a href={`mailto:${quote.customer_email}`} className="qd-email-link">{quote.customer_email}</a> : "\u2014"}</span></div>
+                  <div className="qd-detail-row"><span className="qd-dl-label">Name</span><span className="qd-dl-value">{customer?.name ?? quote.customer_name ?? "\u2014"}</span></div>
+                  <div className="qd-detail-row"><span className="qd-dl-label">Email</span><span className="qd-dl-value">{(customer?.email || quote.customer_email) ? <a href={`mailto:${customer?.email || quote.customer_email}`} className="qd-email-link">{customer?.email || quote.customer_email}</a> : "\u2014"}</span></div>
                   <div className="qd-detail-row"><span className="qd-dl-label">Reference</span><span className="qd-dl-value">{quote.customer_ref ?? "\u2014"}</span></div>
                   <div className="qd-detail-row"><span className="qd-dl-label">Quantity</span><span className="qd-dl-value">{quote.quantity ?? 1}</span></div>
                   {expiresDate && <div className="qd-detail-row"><span className="qd-dl-label">Expires</span><span className="qd-dl-value">{expiresDate}</span></div>}
