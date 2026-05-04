@@ -271,12 +271,19 @@ html, body {
 }
 
 /* ── Quotes Dashboard Table ── */
-.quotes-table th { white-space: nowrap; }
+.quotes-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.quotes-table th {
+  white-space: nowrap;
+  padding: 11px 14px;
+}
 .th-right { text-align: right !important; }
 .td-right { text-align: right; font-variant-numeric: tabular-nums; }
 
 .quote-row-7col {
-  grid-template-columns: 90px 1fr 160px 60px 110px 80px 90px;
+  grid-template-columns: 90px 1fr 160px 60px 120px 80px 100px;
 }
 
 .td-quote-number {

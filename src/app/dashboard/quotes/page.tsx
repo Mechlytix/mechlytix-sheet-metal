@@ -111,6 +111,15 @@ export default async function QuotesPage() {
       ) : (
         <div className="table-card">
           <table className="data-table quotes-table">
+            <colgroup>
+              <col style={{ width: 90 }} />
+              <col />
+              <col style={{ width: 160 }} />
+              <col style={{ width: 60 }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: 80 }} />
+              <col style={{ width: 100 }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>Quote</th>
