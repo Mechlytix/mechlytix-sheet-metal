@@ -459,8 +459,8 @@ export function QuoteDetailClient({
               </button>
             ) : (
               <>
-                <button onClick={handleSave} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>
-                  {saving ? "Saving\u2026" : "Save Changes"}
+                <button onClick={handleSave} disabled={saving || !customerId} className="btn-primary" style={{ fontSize: 13 }}>
+                  {saving ? "Saving\u2026" : !customerId ? "Select Customer" : "Save Changes"}
                 </button>
                 <button onClick={handleCancel} className="btn-ghost" style={{ fontSize: 13 }}>Cancel</button>
               </>

@@ -132,5 +132,6 @@ export interface PriceBreak {
     cutting: number | null;
     bending: number | null;
     setup: number | null;
+    markup: number | null;
   };
 }

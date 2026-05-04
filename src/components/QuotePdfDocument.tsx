@@ -136,6 +136,8 @@ export function QuotePdfDocument({ quotes, profile, brandColor = '#ff6600', cust
               <Text style={s.metaValue}>{quoteRef}</Text>
               <Text style={s.metaLabel}>Date</Text>
               <Text style={s.metaValue}>{createdDate}</Text>
+              <Text style={s.metaLabel}>Prepared By</Text>
+              <Text style={s.metaValue}>{profile?.full_name || '—'}</Text>
               {expiresDate && (
                 <View>
                   <Text style={s.metaLabel}>Valid Until</Text>

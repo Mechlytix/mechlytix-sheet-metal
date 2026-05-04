@@ -232,8 +232,8 @@ function QuoteBreakdown({
           <label>Notes (optional)</label>
           <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Batch notes..." />
         </div>
-        <button className="btn-primary" onClick={() => onSave(customerId, notes)} disabled={saving} style={{ width: "100%" }}>
-          {saving ? "Saving..." : "💾 Save Batch"}
+        <button className="btn-primary" onClick={() => onSave(customerId, notes)} disabled={saving || !customerId} style={{ width: "100%" }}>
+          {saving ? "Saving..." : !customerId ? "Select Customer to Save" : "💾 Save Batch"}
         </button>
       </div>
     </div>
@@ -350,9 +350,10 @@ export default function QuoterPage() {
       const c = pb.overrides.cutting  ?? tierResult.cuttingCostPerPart;
       const b = pb.overrides.bending  ?? tierResult.bendingCostPerPart;
       const s = pb.overrides.setup    ?? tierResult.setupCostPerPart;
+      const markup = pb.overrides.markup ?? activeItem.markup;
 
       const net = m + c + b + s;
-      const unit = net * (1 + activeItem.markup / 100);
+      const unit = net * (1 + markup / 100);
 
       return {
         ...pb,
@@ -494,7 +495,7 @@ export default function QuoterPage() {
         quantity: qty, unitPrice: 0, totalPrice: 0,
         materialCostPerPart: 0, cuttingCostPerPart: 0, bendingCostPerPart: 0, 
         setupCostPerPart: 0, setupCostTotal: 0, leadTime: activeItem.leadTime,
-        overrides: { material: null, cutting: null, bending: null, setup: null }
+        overrides: { material: null, cutting: null, bending: null, setup: null, markup: null }
     };
     updateActiveItem({
       priceBreaks: [...activeItem.priceBreaks, newTier].sort((a,b) => a.quantity - b.quantity)
@@ -616,6 +617,7 @@ export default function QuoterPage() {
                       <th style={{ textAlign: "right" }}>CUTTING</th>
                       <th style={{ textAlign: "right" }}>BENDING</th>
                       <th style={{ textAlign: "right" }}>SETUP</th>
+                      <th style={{ textAlign: "right", width: 90 }}>MARKUP %</th>
                       <th style={{ textAlign: "left", paddingLeft: "1.5rem" }}>LEAD TIME</th>
                       <th style={{ textAlign: "right" }}>UNIT PRICE</th>
                       <th style={{ width: 40 }}></th>
@@ -629,6 +631,7 @@ export default function QuoterPage() {
                       <td className="tier-val-auto">{formatCurrency(result?.cuttingCostPerPart ?? 0)}</td>
                       <td className="tier-val-auto">{formatCurrency(result?.bendingCostPerPart ?? 0)}</td>
                       <td className="tier-val-auto">{formatCurrency(result?.setupCostPerPart ?? 0)}</td>
+                      <td className="tier-val-auto">{activeItem.markup}%</td>
                       <td className="tier-val-auto" style={{ textAlign: "left", paddingLeft: "1.5rem" }}>{activeItem.leadTime}</td>
                       <td className="tier-val-highlight">{formatCurrency(result?.unitPrice ?? 0)}</td>
                       <td></td>
@@ -641,33 +644,16 @@ export default function QuoterPage() {
                             priceBreaks: activeItem.priceBreaks.map((p, idx) => idx === i ? { ...p, quantity: Math.max(1, +e.target.value) } : p)
                           })} style={{ textAlign: "left", width: 60 }} />
                         </td>
-                        <td className="tier-input-cell">
-                          <span className="tier-input-currency">£</span>
-                          <input className={`tier-editable-input ${pb.overrides.material !== null ? "overridden" : ""}`}
-                            value={pb.overrides.material ?? pb.materialCostPerPart.toFixed(2)}
-                            onChange={(e) => updateOverride(i, "material", e.target.value)} />
-                          {pb.overrides.material !== null && <button className="tier-reset-btn" onClick={() => updateOverride(i, "material", "")}>×</button>}
-                        </td>
-                        <td className="tier-input-cell">
-                          <span className="tier-input-currency">£</span>
-                          <input className={`tier-editable-input ${pb.overrides.cutting !== null ? "overridden" : ""}`}
-                            value={pb.overrides.cutting ?? pb.cuttingCostPerPart.toFixed(2)}
-                            onChange={(e) => updateOverride(i, "cutting", e.target.value)} />
-                          {pb.overrides.cutting !== null && <button className="tier-reset-btn" onClick={() => updateOverride(i, "cutting", "")}>×</button>}
-                        </td>
-                        <td className="tier-input-cell">
-                          <span className="tier-input-currency">£</span>
-                          <input className={`tier-editable-input ${pb.overrides.bending !== null ? "overridden" : ""}`}
-                            value={pb.overrides.bending ?? pb.bendingCostPerPart.toFixed(2)}
-                            onChange={(e) => updateOverride(i, "bending", e.target.value)} />
-                          {pb.overrides.bending !== null && <button className="tier-reset-btn" onClick={() => updateOverride(i, "bending", "")}>×</button>}
-                        </td>
-                        <td className="tier-input-cell">
-                          <span className="tier-input-currency">£</span>
-                          <input className={`tier-editable-input ${pb.overrides.setup !== null ? "overridden" : ""}`}
-                            value={pb.overrides.setup ?? pb.setupCostPerPart.toFixed(2)}
-                            onChange={(e) => updateOverride(i, "setup", e.target.value)} />
-                          {pb.overrides.setup !== null && <button className="tier-reset-btn" onClick={() => updateOverride(i, "setup", "")}>×</button>}
+                        <td className="tier-val-auto">{formatCurrency(pb.materialCostPerPart)}</td>
+                        <td className="tier-val-auto">{formatCurrency(pb.cuttingCostPerPart)}</td>
+                        <td className="tier-val-auto">{formatCurrency(pb.bendingCostPerPart)}</td>
+                        <td className="tier-val-auto">{formatCurrency(pb.setupCostPerPart)}</td>
+                        <td className="tier-input-cell" style={{ width: 90 }}>
+                          <input className={`tier-editable-input ${pb.overrides.markup !== null ? "overridden" : ""}`}
+                            value={pb.overrides.markup ?? activeItem.markup}
+                            onChange={(e) => updateOverride(i, "markup", e.target.value)}
+                            style={{ textAlign: "right", paddingRight: 16 }} />
+                          <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--text-dim)" }}>%</span>
                         </td>
                         <td style={{ textAlign: "left", paddingLeft: "1.5rem" }}>
                           <input className="tier-editable-input" value={pb.leadTime ?? ""} onChange={(e) => updateTierLeadTime(i, e.target.value)} style={{ textAlign: "left" }} />
