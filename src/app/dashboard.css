@@ -1267,6 +1267,7 @@
 /* -- DXF Viewer ------------------------------------------------- */
 .dxf-viewer-container {
   width: 100%;
+  height: 100%;
   position: relative;
   overflow: hidden;
   background: var(--bg-primary);
@@ -1278,8 +1279,8 @@
 
 .dxf-viewer-canvas {
   position: relative;
-  min-height: 450px;
   flex: 1;
+  min-height: 0;
 }
 
 .dxf-viewer-svg {
@@ -1481,7 +1482,7 @@
 }
 
 .viewer-split-viewer {
-  height: 500px;
+  height: 460px;
   background: var(--bg-secondary);
   border-radius: 12px;
   overflow: hidden;
@@ -1492,7 +1493,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 500px;
+  height: 460px;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -1874,13 +1875,14 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .quote-card-header {
   padding: 24px;
   background: linear-gradient(135deg, rgba(255, 102, 0, 0.08), transparent);
   border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .quote-card-filename {
@@ -3036,7 +3038,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  padding: 6px 8px 6px 20px;
+  padding: 6px 8px;
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 12px;

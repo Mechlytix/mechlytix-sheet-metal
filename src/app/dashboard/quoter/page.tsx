@@ -226,7 +226,7 @@ function QuoteBreakdown({
       <div className="quote-save-section">
         <div className="form-field">
           <label>Customer</label>
-          <CustomerSelector userId={userId} value={customerId} onChange={setCustomerId} />
+          <CustomerSelector userId={userId} value={customerId} onChange={(id) => setCustomerId(id)} />
         </div>
         <div className="form-field">
           <label>Notes (optional)</label>
@@ -674,15 +674,15 @@ export default function QuoterPage() {
                 <table className="quoter-tier-table">
                   <thead>
                     <tr>
-                      <th style={{ textAlign: "left", width: 100 }}>QTY</th>
-                      <th style={{ textAlign: "right" }}>MATERIAL</th>
-                      <th style={{ textAlign: "right" }}>CUTTING</th>
-                      <th style={{ textAlign: "right" }}>BENDING</th>
-                      <th style={{ textAlign: "right" }}>SETUP</th>
+                      <th style={{ textAlign: "left", width: 90 }}>QTY</th>
+                      <th style={{ textAlign: "right", width: 80 }}>MATERIAL</th>
+                      <th style={{ textAlign: "right", width: 80 }}>CUTTING</th>
+                      <th style={{ textAlign: "right", width: 80 }}>BENDING</th>
+                      <th style={{ textAlign: "right", width: 80 }}>SETUP</th>
                       <th style={{ textAlign: "right", width: 90 }}>MARKUP %</th>
-                      <th style={{ textAlign: "left", paddingLeft: "1.5rem" }}>LEAD TIME</th>
-                      <th style={{ textAlign: "right" }}>UNIT PRICE</th>
-                      <th style={{ width: 40 }}></th>
+                      <th style={{ textAlign: "left", width: 120 }}>LEAD TIME</th>
+                      <th style={{ textAlign: "right", width: 90 }}>UNIT PRICE</th>
+                      <th style={{ width: 36 }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -692,8 +692,8 @@ export default function QuoterPage() {
                       <td className="tier-val-auto">{formatCurrency(result?.cuttingCostPerPart ?? 0)}</td>
                       <td className="tier-val-auto">{formatCurrency(result?.bendingCostPerPart ?? 0)}</td>
                       <td className="tier-val-auto">{formatCurrency(result?.setupCostPerPart ?? 0)}</td>
-                      <td className="tier-val-auto">{activeItem.markup}%</td>
-                      <td className="tier-val-auto" style={{ textAlign: "left", paddingLeft: "1.5rem" }}>{activeItem.leadTime}</td>
+                      <td className="tier-val-auto">{activeItem.markup} <span style={{ fontSize: 10, color: "var(--text-dim)" }}>%</span></td>
+                      <td className="tier-val-auto" style={{ textAlign: "left" }}>{activeItem.leadTime}</td>
                       <td className="tier-val-highlight">{formatCurrency(result?.unitPrice ?? 0)}</td>
                       <td></td>
                     </tr>
@@ -702,7 +702,7 @@ export default function QuoterPage() {
                         <td>
                           <input type="number" className="tier-editable-input" value={pb.quantity} onChange={(e) => updateActiveItem({
                             priceBreaks: activeItem.priceBreaks.map((p, idx) => idx === i ? { ...p, quantity: Math.max(1, +e.target.value) } : p)
-                          })} style={{ textAlign: "left", width: 60 }} />
+                          })} style={{ textAlign: "left", width: 60, paddingLeft: 8 }} />
                         </td>
                         <td className="tier-val-auto">{formatCurrency(pb.materialCostPerPart)}</td>
                         <td className="tier-val-auto">{formatCurrency(pb.cuttingCostPerPart)}</td>
@@ -712,11 +712,11 @@ export default function QuoterPage() {
                           <input className={`tier-editable-input ${pb.overrides.markup !== null ? "overridden" : ""}`}
                             value={pb.overrides.markup ?? activeItem.markup}
                             onChange={(e) => updateOverride(i, "markup", e.target.value)}
-                            style={{ textAlign: "right", paddingRight: 16 }} />
+                            style={{ textAlign: "right", paddingLeft: 8, paddingRight: 20 }} />
                           <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--text-dim)" }}>%</span>
                         </td>
-                        <td style={{ textAlign: "left", paddingLeft: "1.5rem" }}>
-                          <input className="tier-editable-input" value={pb.leadTime ?? ""} onChange={(e) => updateTierLeadTime(i, e.target.value)} style={{ textAlign: "left" }} />
+                        <td style={{ textAlign: "left" }}>
+                          <input className="tier-editable-input" value={pb.leadTime ?? ""} onChange={(e) => updateTierLeadTime(i, e.target.value)} style={{ textAlign: "left", paddingLeft: 8 }} />
                         </td>
                         <td className="tier-val-highlight">{formatCurrency(pb.unitPrice)}</td>
                         <td><button className="btn-tier-remove" onClick={() => removeTier(i)}>×</button></td>
@@ -724,6 +724,7 @@ export default function QuoterPage() {
                     ))}
                   </tbody>
                 </table>
+
                 <div className="tier-add-row">
                   <input type="number" className="tier-add-input" placeholder="Add Qty..."
                     onKeyDown={(e) => {
