@@ -1588,7 +1588,7 @@
 
 .side-config-row {
   display: grid;
-  grid-template-columns: 90px 1fr;
+  grid-template-columns: 90px 90px;
   gap: 8px;
 }
 
