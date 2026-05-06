@@ -583,9 +583,8 @@ export function QuoteDetailClient({
                       geometry={effectiveGeometry || activeDxf}
                       layerIntents={layerIntents}
                       pathIntents={pathIntents}
-                      onPathClick={editing ? (id, currentIntent) => {
-                        const next: DXFIntent = currentIntent === "cut" ? "bend" : currentIntent === "bend" ? "ignore" : "cut";
-                        setPathIntents(prev => ({ ...prev, [id]: next }));
+                      onPathIntentChange={editing ? (id, newIntent) => {
+                        setPathIntents(prev => ({ ...prev, [id]: newIntent }));
                       } : undefined}
                     />
                   ) : (

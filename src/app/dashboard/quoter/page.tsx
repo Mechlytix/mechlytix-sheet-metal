@@ -610,9 +610,8 @@ export default function QuoterPage() {
                   geometry={activeItem.geometry}
                   layerIntents={activeItem.layerIntents}
                   pathIntents={activeItem.pathIntents}
-                  onPathClick={(pid, intent) => {
-                    const nextIntent = intent === "cut" ? "bend" : intent === "bend" ? "ignore" : "cut";
-                    updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: nextIntent } });
+                  onPathIntentChange={(pid, newIntent) => {
+                    updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: newIntent } });
                   }}
                 />
               </div>

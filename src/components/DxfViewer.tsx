@@ -7,10 +7,10 @@ interface DxfViewerProps {
   geometry: PricingGeometry;
   layerIntents?: Record<string, DXFIntent>;
   pathIntents?: Record<string, DXFIntent>;
-  onPathClick?: (pathId: string, currentIntent: DXFIntent) => void;
+  onPathIntentChange?: (pathId: string, newIntent: DXFIntent) => void;
 }
 
-export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPathClick }: DxfViewerProps) {
+export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPathIntentChange }: DxfViewerProps) {
   const { dxfData, boundingWidth, boundingHeight } = geometry;
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,9 +43,11 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
   const [isDragging, setIsDragging] = useState(false);
   const [dragMoved, setDragMoved] = useState(false);
   const [lastPt, setLastPt] = useState({ x: 0, y: 0 });
+  const [popover, setPopover] = useState<{ pathId: string, currentIntent: DXFIntent, x: number, y: number } | null>(null);
 
   // Handle Pan
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    setPopover(null);
     e.currentTarget.setPointerCapture(e.pointerId);
     setIsDragging(true);
     setDragMoved(false);
@@ -75,32 +77,41 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
     e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
-  // Handle Zoom (Wheel) using a non-passive ref to prevent default scroll
+  // Keep a ref to the latest vb so the wheel handler never goes stale
+  const vbRef = useRef(vb);
+  useEffect(() => { vbRef.current = vb; }, [vb]);
+
+  // Handle Zoom (Wheel) — zoom toward cursor position
   useEffect(() => {
     const svgEl = svgRef.current;
     if (!svgEl) return;
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      
+
       const rect = svgEl.getBoundingClientRect();
-      const pointerX = e.clientX - rect.left;
-      const pointerY = e.clientY - rect.top;
+      // Normalised pointer position within the SVG element (0..1)
+      const pxNorm = (e.clientX - rect.left) / rect.width;
+      const pyNorm = (e.clientY - rect.top)  / rect.height;
 
-      // Pointer position in current viewBox coordinates
-      const ratio = Math.max(vb.w / rect.width, vb.h / rect.height);
-      const svgPointerX = vb.x + pointerX * ratio;
-      // Because of scaleY(-1), Y is inverted
-      const svgPointerY = vb.y + (rect.height - pointerY) * ratio;
+      const zoomFactor = Math.exp(e.deltaY * 0.0015);
 
-      // Zoom factor
-      const zoomFactor = Math.exp(e.deltaY * 0.002);
-      
       setVb(prev => {
+        // The ratio maps 1 screen pixel → how many SVG units
+        // Use the "meet" logic: the limiting axis sets the scale
+        const ratio = Math.max(prev.w / rect.width, prev.h / rect.height);
+
+        // Cursor position in SVG coordinate space
+        // scaleY(-1) is applied as a CSS transform, so screen Y is flipped
+        const svgCursorX = prev.x + pxNorm * rect.width  * ratio;
+        const svgCursorY = prev.y + (1 - pyNorm) * rect.height * ratio;
+
         const newW = prev.w * zoomFactor;
         const newH = prev.h * zoomFactor;
-        const newX = svgPointerX - (pointerX * (newW / rect.width));
-        const newY = svgPointerY - ((rect.height - pointerY) * (newH / rect.height));
+
+        // Translate so that the point under the cursor stays fixed
+        const newX = svgCursorX - pxNorm        * rect.width  * (newW / rect.width);
+        const newY = svgCursorY - (1 - pyNorm)  * rect.height * (newH / rect.height);
 
         return { x: newX, y: newY, w: newW, h: newH };
       });
@@ -108,7 +119,9 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
 
     svgEl.addEventListener("wheel", handleWheel, { passive: false });
     return () => svgEl.removeEventListener("wheel", handleWheel);
-  }, [vb]);
+  // Only register once — vbRef keeps the handler fresh without re-registering
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleReset = () => {
     setVb(defaultViewBox);
@@ -214,8 +227,16 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (!dragMoved && onPathClick) {
-                    onPathClick(path.id, currentIntent);
+                  if (!dragMoved && onPathIntentChange) {
+                    const rect = containerRef.current?.getBoundingClientRect();
+                    if (rect) {
+                      setPopover({
+                        pathId: path.id,
+                        currentIntent,
+                        x: e.clientX - rect.left,
+                        y: e.clientY - rect.top,
+                      });
+                    }
                   }
                 }}
               />
@@ -254,6 +275,45 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
         <span>W: {boundingWidth.toFixed(1)}mm</span>
         <span>H: {boundingHeight.toFixed(1)}mm</span>
       </div>
+
+      {/* Popover */}
+      {popover && (
+        <div
+          className="dxf-intent-popover"
+          style={{
+            position: "absolute",
+            left: popover.x,
+            top: popover.y,
+            transform: "translate(-50%, -120%)", // Float above the click point
+            background: "var(--bg-primary)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-full)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            display: "flex",
+            padding: "4px",
+            gap: "4px",
+            zIndex: 10,
+          }}
+        >
+          {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
+            <button
+              key={intent}
+              className={`layer-intent-btn ${popover.currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
+              onClick={() => {
+                if (onPathIntentChange) onPathIntentChange(popover.pathId, intent);
+                setPopover(null);
+              }}
+              style={{
+                borderRadius: "var(--radius-full)",
+                padding: "4px 12px",
+                fontSize: "11px",
+              }}
+            >
+              {intent}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
