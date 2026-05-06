@@ -4,6 +4,7 @@ import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CustomerSelector } from "@/components/CustomerSelector";
+import type { CustomerSelection } from "@/components/CustomerSelector";
 import { QuoteStatusManager } from "@/components/QuoteStatusManager";
 import { QuoteShareButton } from "@/components/QuoteShareButton";
 import { PdfDownloadButton } from "@/components/PdfDownloadButton";
@@ -216,7 +217,18 @@ export function QuoteDetailClient({
   const [bendCount, setBendCount] = useState(activeQuote.bend_count ?? 0);
   const [materialId, setMaterialId] = useState(activeQuote.material_id ?? "");
   const [machineId, setMachineId] = useState(activeQuote.machine_id ?? "");
-  const [customerId, setCustomerId] = useState<string | null>(quote.customer_id ?? null);
+  const [customerSelection, setCustomerSelection] = useState<CustomerSelection | null>(() => {
+    const contactId = quote.customer_id ?? null;
+    const companyId = quote.company_id ?? null;
+    if (!contactId) return null;
+    return {
+      contactId,
+      companyId: companyId ?? "",
+      companyName: (customer as any)?.company_name ?? "",
+      contactName: (customer as any)?.name ?? "",
+      contactEmail: (customer as any)?.email ?? null,
+    };
+  });
   const [customerRef, setCustomerRef] = useState(quote.customer_ref ?? "");
   const [expiresAt, setExpiresAt] = useState(quote.expires_at ? quote.expires_at.slice(0, 10) : "");
   const [notes, setNotes] = useState(quote.notes ?? "");
@@ -403,7 +415,13 @@ export function QuoteDetailClient({
     setBendCount(q.bend_count ?? 0);
     setMaterialId(q.material_id ?? "");
     setMachineId(q.machine_id ?? "");
-    setCustomerId(quote.customer_id ?? null);
+    setCustomerSelection(quote.customer_id ? {
+      contactId: quote.customer_id,
+      companyId: quote.company_id ?? "",
+      companyName: (customer as any)?.company_name ?? "",
+      contactName: (customer as any)?.name ?? "",
+      contactEmail: (customer as any)?.email ?? null,
+    } : null);
     setCustomerRef(quote.customer_ref ?? "");
     setExpiresAt(quote.expires_at ? quote.expires_at.slice(0, 10) : "");
     setNotes(quote.notes ?? "");
@@ -440,11 +458,12 @@ export function QuoteDetailClient({
 
     // Shared data (applied to all parts in the batch)
     const sharedData: any = {
-      customer_id: customerId || null,
+      customer_id: customerSelection?.contactId ?? null,
+      company_id: customerSelection?.companyId ?? null,
       customer_ref: customerRef.trim() || null,
       expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
       notes: notes.trim() || null,
-      ...(customerId ? { customer_name: null, customer_email: null } : {}),
+      ...(customerSelection ? { customer_name: null, customer_email: null } : {}),
     };
 
     // Save the active part
@@ -503,8 +522,8 @@ export function QuoteDetailClient({
               </button>
             ) : (
               <>
-                <button onClick={handleSave} disabled={saving || !customerId} className="btn-primary" style={{ fontSize: 13 }}>
-                  {saving ? "Saving\u2026" : !customerId ? "Select Customer" : "Save Changes"}
+                <button onClick={handleSave} disabled={saving || !customerSelection} className="btn-primary" style={{ fontSize: 13 }}>
+                  {saving ? "Saving…" : !customerSelection ? "Select Customer" : "Save Changes"}
                 </button>
                 <button onClick={handleCancel} className="btn-ghost" style={{ fontSize: 13 }}>Cancel</button>
               </>
@@ -851,7 +870,7 @@ export function QuoteDetailClient({
                 <div className="qd-edit-fields">
                   <div className="form-field">
                     <label>Customer</label>
-                    <CustomerSelector userId={userId} value={customerId} onChange={(id) => setCustomerId(id)} />
+                    <CustomerSelector userId={userId} value={customerSelection?.contactId ?? null} onChange={(_id, sel) => setCustomerSelection(sel)} />
                   </div>
                   <div className="form-field">
                     <label>Reference / PO</label>

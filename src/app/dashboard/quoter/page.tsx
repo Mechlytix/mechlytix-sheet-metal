@@ -11,6 +11,7 @@ import type { PricingGeometry, PricingResult, DXFIntent, PriceBreak } from "@/li
 import type { Material, MachineProfile } from "@/lib/types/database";
 import { DxfViewer } from "@/components/DxfViewer";
 import { CustomerSelector } from "@/components/CustomerSelector";
+import type { CustomerSelection } from "@/components/CustomerSelector";
 
 // ─────────────────────────────────────────────────────────────
 // /dashboard/quoter  -  Unified STEP / DXF Instant Quoter (Multi-Part)
@@ -168,11 +169,11 @@ function QuoteBreakdown({
 }: {
   result: PricingResult;
   filename: string;
-  onSave: (customerId: string | null, notes: string) => void;
+  onSave: (contactId: string, companyId: string, notes: string) => void;
   saving: boolean;
   userId: string | null;
 }) {
-  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<CustomerSelection | null>(null);
   const [notes, setNotes] = useState("");
 
   const rows = [
@@ -181,6 +182,8 @@ function QuoteBreakdown({
     { label: "Bending", value: result.bendingCostPerPart, note: null },
     { label: "Setup (per part)", value: result.setupCostPerPart, note: null },
   ];
+
+  const canSave = !!selection;
 
   return (
     <div className="quote-card">
@@ -226,14 +229,23 @@ function QuoteBreakdown({
       <div className="quote-save-section">
         <div className="form-field">
           <label>Customer</label>
-          <CustomerSelector userId={userId} value={customerId} onChange={(id) => setCustomerId(id)} />
+          <CustomerSelector
+            userId={userId}
+            value={selection?.contactId ?? null}
+            onChange={(_id, sel) => setSelection(sel)}
+          />
         </div>
         <div className="form-field">
           <label>Notes (optional)</label>
           <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Batch notes..." />
         </div>
-        <button className="btn-primary" onClick={() => onSave(customerId, notes)} disabled={saving || !customerId} style={{ width: "100%" }}>
-          {saving ? "Saving..." : !customerId ? "Select Customer to Save" : "💾 Save Batch"}
+        <button
+          className="btn-primary"
+          onClick={() => selection && onSave(selection.contactId, selection.companyId, notes)}
+          disabled={saving || !canSave}
+          style={{ width: "100%" }}
+        >
+          {saving ? "Saving..." : !canSave ? "Select Customer to Save" : "💾 Save Batch"}
         </button>
       </div>
     </div>
@@ -418,7 +430,7 @@ export default function QuoterPage() {
     }
   }, [defaultMaterialId, defaultMachineId, defaultMarkup]);
 
-  const handleSave = useCallback(async (customerId: string | null, notes: string) => {
+  const handleSave = useCallback(async (contactId: string, companyId: string, notes: string) => {
     if (phase.name !== "ready" || items.length === 0 || !userId) return;
     setPhase({ name: "saving" });
 
@@ -474,7 +486,8 @@ export default function QuoterPage() {
           bend_count: effGeo.bendCount, thickness_mm: r.thicknessMm, material_id: item.materialId, machine_id: item.machineId,
           quantity: item.quantity, markup_percent: item.markup, material_cost: r.materialCostPerPart,
           cutting_cost: r.cuttingCostPerPart, bending_cost: r.bendingCostPerPart, setup_cost: r.setupCostTotal,
-          unit_price: r.unitPrice, total_price: r.totalPrice, customer_id: customerId, notes: notes,
+          unit_price: r.unitPrice, total_price: r.totalPrice,
+          customer_id: contactId, company_id: companyId, notes: notes,
           status: "draft", upload_id: uploadId, price_breaks: item.priceBreaks, lead_time: item.leadTime
         }).select("id").single();
 
