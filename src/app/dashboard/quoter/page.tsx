@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboard } from "@/lib/dashboard-context";
 import { parseDXFGeometry } from "@/lib/dxf/parse-dxf";
@@ -245,7 +246,7 @@ function QuoteBreakdown({
           disabled={saving || !canSave}
           style={{ width: "100%" }}
         >
-          {saving ? "Saving..." : !canSave ? "Select Customer to Save" : "💾 Save Batch"}
+          {saving ? "Saving..." : !canSave ? "Select Customer to Save" : "💾 Save Quote"}
         </button>
       </div>
     </div>
@@ -255,6 +256,7 @@ function QuoteBreakdown({
 // ─── Main Quoter Page ────────────────────────────────────────
 
 export default function QuoterPage() {
+  const router = useRouter();
   const { units } = useDashboard();
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
   const [items, setItems] = useState<QuoteItem[]>([]);
@@ -473,7 +475,9 @@ export default function QuoterPage() {
           if (uploadData) {
             const { data: dbUpload } = await supabase.from("uploads").insert({
               user_id: userId, filename: item.sourceFile.name, storage_path: path,
-              file_size_bytes: item.sourceFile.size, file_type: "processed", status: "processed"
+              file_size_bytes: item.sourceFile.size,
+              file_type: item.sourceFile.name.toLowerCase().endsWith(".dxf") ? "dxf" : "step",
+              status: "completed"
             }).select("id").single();
             if (dbUpload) uploadId = dbUpload.id;
           }
@@ -494,7 +498,7 @@ export default function QuoterPage() {
         if (quoteData && !firstQuoteId) firstQuoteId = quoteData.id;
         if (quoteErr) throw quoteErr;
       }
-      setPhase({ name: "saved", quoteId: firstQuoteId });
+      router.push(`/dashboard/quotes/${firstQuoteId}`);
     } catch (err) {
       alert("Failed to save quotes: " + (err instanceof Error ? err.message : String(err)));
       setPhase({ name: "ready" });
