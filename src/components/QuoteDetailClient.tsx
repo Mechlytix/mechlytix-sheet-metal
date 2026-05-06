@@ -695,18 +695,8 @@ export function QuoteDetailClient({
 
               {/* Pricing Tiers Table */}
               <div className="qd-pricing-section">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 12, borderBottom: "1px solid var(--border-subtle)", marginBottom: 0 }}>
                   <h3 className="qd-section-title" style={{ margin: 0 }}>Pricing Tiers</h3>
-                  {!editing && (
-                    <div className="qd-badges">
-                      <span className="input-type-badge">{activeQuote.input_type}</span>
-                      {viewGrossMargin != null && (
-                        <span className="qd-margin-badge">
-                          {viewGrossMargin.toFixed(0)}% margin
-                        </span>
-                      )}
-                    </div>
-                  )}
                 </div>
 
                 <div className="quoter-tier-table-wrapper">

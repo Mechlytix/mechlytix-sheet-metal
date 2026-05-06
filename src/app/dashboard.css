@@ -2429,6 +2429,14 @@
   gap: 6px;
 }
 
+.qd-pricing-section {
+  padding: 16px 24px 0;
+}
+
+.qd-pricing-section .quoter-tier-table-wrapper {
+  margin-top: 0;
+}
+
 /* â”€â”€ Section Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .qd-section-card {
   background: var(--bg-secondary);
