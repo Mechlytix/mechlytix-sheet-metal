@@ -708,15 +708,19 @@ export default function QuoterPage() {
                         <td className="tier-val-auto">{formatCurrency(pb.cuttingCostPerPart)}</td>
                         <td className="tier-val-auto">{formatCurrency(pb.bendingCostPerPart)}</td>
                         <td className="tier-val-auto">{formatCurrency(pb.setupCostPerPart)}</td>
-                        <td className="tier-input-cell" style={{ width: 90 }}>
-                          <input className={`tier-editable-input ${pb.overrides.markup !== null ? "overridden" : ""}`}
-                            value={pb.overrides.markup ?? activeItem.markup}
-                            onChange={(e) => updateOverride(i, "markup", e.target.value)}
-                            style={{ textAlign: "right", paddingLeft: 8, paddingRight: 20 }} />
-                          <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--text-dim)" }}>%</span>
+                        <td style={{ width: 90 }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>
+                            <input
+                              className={`tier-editable-input ${pb.overrides.markup !== null ? "overridden" : ""}`}
+                              value={pb.overrides.markup ?? activeItem.markup}
+                              onChange={(e) => updateOverride(i, "markup", e.target.value)}
+                              style={{ textAlign: "right", width: 36, padding: 0, flex: "0 0 auto" }}
+                            />
+                            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>%</span>
+                          </div>
                         </td>
                         <td style={{ textAlign: "left" }}>
-                          <input className="tier-editable-input" value={pb.leadTime ?? ""} onChange={(e) => updateTierLeadTime(i, e.target.value)} style={{ textAlign: "left", paddingLeft: 8 }} />
+                          <input className="tier-editable-input" value={pb.leadTime ?? ""} onChange={(e) => updateTierLeadTime(i, e.target.value)} style={{ textAlign: "left", padding: 0 }} />
                         </td>
                         <td className="tier-val-highlight">{formatCurrency(pb.unitPrice)}</td>
                         <td><button className="btn-tier-remove" onClick={() => removeTier(i)}>×</button></td>
