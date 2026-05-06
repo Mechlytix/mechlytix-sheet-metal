@@ -48,7 +48,6 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
   // Handle Pan
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     setPopover(null);
-    e.currentTarget.setPointerCapture(e.pointerId);
     setIsDragging(true);
     setDragMoved(false);
     setLastPt({ x: e.clientX, y: e.clientY });
@@ -58,23 +57,33 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
     if (!isDragging || !svgRef.current) return;
     const dx = e.clientX - lastPt.x;
     const dy = e.clientY - lastPt.y;
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) setDragMoved(true);
     
-    setLastPt({ x: e.clientX, y: e.clientY });
+    // Only capture the pointer if we actually start dragging
+    // This allows regular clicks to pass through to the SVG paths
+    if (!dragMoved && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) {
+      setDragMoved(true);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
+    
+    if (dragMoved || Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      setLastPt({ x: e.clientX, y: e.clientY });
 
-    const rect = svgRef.current.getBoundingClientRect();
-    const ratio = Math.max(vb.w / rect.width, vb.h / rect.height);
+      const rect = svgRef.current.getBoundingClientRect();
+      const ratio = Math.max(vb.w / rect.width, vb.h / rect.height);
 
-    setVb(prev => ({
-      ...prev,
-      x: prev.x - dx * ratio,
-      y: prev.y + dy * ratio // +dy because of scaleY(-1) CSS transform
-    }));
+      setVb(prev => ({
+        ...prev,
+        x: prev.x - dx * ratio,
+        y: prev.y + dy * ratio // +dy because of scaleY(-1) CSS transform
+      }));
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
     setIsDragging(false);
-    e.currentTarget.releasePointerCapture(e.pointerId);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
   };
 
   // Keep a ref to the latest vb so the wheel handler never goes stale
