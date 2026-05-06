@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 // ─────────────────────────────────────────────────────────
-// /dashboard/customers/new
+// /dashboard/customers/new (Creates a Company)
 // ─────────────────────────────────────────────────────────
 
 export default function NewCustomerPage() {
@@ -13,11 +13,8 @@ export default function NewCustomerPage() {
   const [saving, setSaving] = useState(false);
   const [sameAsBilling, setSameAsBilling] = useState(false);
 
-  // Contact fields
+  // Company fields
   const [name, setName] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [taxId, setTaxId] = useState("");
 
   // Address fields
@@ -37,13 +34,10 @@ export default function NewCustomerPage() {
     if (!user) { router.push("/login"); return; }
 
     const { error, data } = await supabase
-      .from("customers")
+      .from("companies")
       .insert({
         user_id: user.id,
         name: name.trim(),
-        company_name: companyName.trim() || null,
-        email: email.trim() || null,
-        phone: phone.trim() || null,
         tax_id: taxId.trim() || null,
         billing_address: billingAddress.trim() || null,
         shipping_address: sameAsBilling
@@ -55,7 +49,7 @@ export default function NewCustomerPage() {
       .single();
 
     if (error || !data) {
-      alert("Failed to create customer: " + (error?.message ?? "unknown error"));
+      alert("Failed to create company: " + (error?.message ?? "unknown error"));
       setSaving(false);
       return;
     }
@@ -77,74 +71,45 @@ export default function NewCustomerPage() {
           </svg>
           Back to Customers
         </button>
-        <h1 className="dash-page-title">Add New Customer</h1>
-        <p className="dash-page-subtitle">Create a client profile to link to quotes and invoices.</p>
+        <h1 className="dash-page-title">Add New Company</h1>
+        <p className="dash-page-subtitle">Create a company profile to link to contacts and quotes.</p>
       </div>
 
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-        {/* ── Contact Information ─────────────────── */}
+        {/* ── Company Information ─────────────────── */}
         <div className="settings-card">
           <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 16, borderBottom: "1px solid var(--border-subtle)" }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,102,0,0.1)", border: "1px solid rgba(255,102,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                <path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/><path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4"/><path d="M9 7h6"/><path d="M9 11h6"/>
               </svg>
             </div>
             <div>
-              <h2 className="settings-card-title" style={{ margin: 0 }}>Contact Information</h2>
+              <h2 className="settings-card-title" style={{ margin: 0 }}>Company Details</h2>
             </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <div className="form-field" style={{ gridColumn: "1 / 2" }}>
-              <label htmlFor="cust-name">
-                Contact Name <span style={{ color: "var(--accent-primary)" }}>*</span>
+            <div className="form-field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="comp-name">
+                Company Name <span style={{ color: "var(--accent-primary)" }}>*</span>
               </label>
               <input
-                id="cust-name"
+                id="comp-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Jane Smith"
+                placeholder="Acme Engineering Ltd"
                 required
                 autoFocus
               />
             </div>
-            <div className="form-field">
-              <label htmlFor="cust-company">Company Name</label>
+            
+            <div className="form-field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="comp-tax">Tax ID / VAT Number</label>
               <input
-                id="cust-company"
-                type="text"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="Acme Engineering Ltd"
-              />
-            </div>
-            <div className="form-field">
-              <label htmlFor="cust-email">Email Address</label>
-              <input
-                id="cust-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="jane@acme.com"
-              />
-            </div>
-            <div className="form-field">
-              <label htmlFor="cust-phone">Phone Number</label>
-              <input
-                id="cust-phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+44 7700 000000"
-              />
-            </div>
-            <div className="form-field" style={{ gridColumn: "1 / 3" }}>
-              <label htmlFor="cust-tax">Tax ID / VAT Number</label>
-              <input
-                id="cust-tax"
+                id="comp-tax"
                 type="text"
                 value={taxId}
                 onChange={(e) => setTaxId(e.target.value)}
@@ -254,13 +219,13 @@ export default function NewCustomerPage() {
             <h2 className="settings-card-title" style={{ margin: 0 }}>Internal Notes</h2>
           </div>
           <div className="form-field">
-            <label htmlFor="cust-notes">Notes</label>
+            <label htmlFor="comp-notes">Notes</label>
             <textarea
-              id="cust-notes"
+              id="comp-notes"
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Payment terms, preferred contacts, special requirements…"
+              placeholder="Payment terms, special requirements…"
             />
           </div>
         </div>
@@ -275,7 +240,7 @@ export default function NewCustomerPage() {
             disabled={saving || !name.trim()}
             className="btn-primary"
           >
-            {saving ? "Creating…" : "Create Customer"}
+            {saving ? "Creating…" : "Create Company"}
           </button>
         </div>
       </form>

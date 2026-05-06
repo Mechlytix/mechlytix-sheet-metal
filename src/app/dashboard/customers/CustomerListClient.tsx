@@ -155,7 +155,9 @@ export function CustomerListClient({ initialCompanies }: Props) {
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{co.name}</span>
+                      <Link href={`/dashboard/customers/${co.id}`} style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", textDecoration: "none" }}>
+                        {co.name}
+                      </Link>
                       <span style={{ fontSize: 11, color: "var(--text-dim)", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "1px 7px" }}>
                         {co.contacts.length} contact{co.contacts.length !== 1 ? "s" : ""}
                       </span>
@@ -168,7 +170,7 @@ export function CustomerListClient({ initialCompanies }: Props) {
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <Link href={`/dashboard/customers/new?company=${co.id}`}
+                    <Link href={`/dashboard/customers/${co.id}/new-contact`}
                       style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", background: "rgba(255,102,0,0.06)", border: "1px solid rgba(255,102,0,0.2)", borderRadius: 6, color: "var(--accent-primary)", fontSize: 12, fontWeight: 500, textDecoration: "none" }}>
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                       Add Contact
