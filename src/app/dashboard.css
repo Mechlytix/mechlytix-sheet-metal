@@ -4163,3 +4163,165 @@
   background: rgba(239, 68, 68, 0.12);
   color: #ef4444;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   MATERIAL ROW — EXPANDABLE SHEET SIZES
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Expand arrow ───────────────────────────────────────── */
+.material-expand-arrow {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--text-dim);
+  transition: transform 0.2s ease;
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.mat-row-main:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mat-row-main td {
+  cursor: pointer;
+}
+
+/* ── Sheet count badge ──────────────────────────────────── */
+.material-sheets-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 102, 0, 0.1);
+  color: var(--accent-primary);
+  margin-left: 6px;
+}
+
+/* ── Expanded sheet rows ────────────────────────────────── */
+.mat-row-sheets > td {
+  padding: 0 !important;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.mat-sheets-container {
+  background: rgba(0, 0, 0, 0.15);
+  border-top: 1px solid var(--border-subtle);
+  padding: 12px 16px 14px 42px;
+}
+
+.mat-sheets-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.mat-sheets-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mat-sheets-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 10px;
+  border: 1px dashed var(--border-active);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--accent-primary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.mat-sheets-add-btn:hover {
+  background: rgba(255, 102, 0, 0.06);
+  border-color: var(--accent-primary);
+}
+
+/* ── Empty state ────────────────────────────────────────── */
+.mat-sheets-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.mat-sheets-empty-btn {
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mat-sheets-empty-btn:hover {
+  opacity: 0.8;
+}
+
+/* ── Sub-table ──────────────────────────────────────────── */
+.mat-sheets-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.mat-sheets-table th {
+  padding: 5px 10px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mat-sheets-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+}
+
+.mat-sheets-table tr:last-child td {
+  border-bottom: none;
+}
+
+.mat-sheets-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.td-mono {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  letter-spacing: -0.02em;
+}
+
+/* ── Sheet modal material badge ─────────────────────────── */
+.sheet-modal-material-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  margin: 0 20px;
+  background: rgba(255, 102, 0, 0.06);
+  border: 1px solid rgba(255, 102, 0, 0.15);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-primary);
+}

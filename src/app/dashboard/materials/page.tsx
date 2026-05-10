@@ -4,6 +4,7 @@ import { useState, useEffect, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboard } from "@/lib/dashboard-context";
 import { formatCostPerWeight } from "@/lib/units";
+import type { UnitSystem } from "@/lib/units";
 import type { Material, MaterialCategory, SheetSize } from "@/lib/types/database";
 
 // ─────────────────────────────────────────────────────────
@@ -101,29 +102,31 @@ function AddMaterialModal({ onClose, onSaved, userId, initialValues }: MaterialM
           <div className="form-row-2">
             <div className="form-field">
               <label>Name *</label>
-              <input required value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="304 Stainless Steel" />
+              <input required value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="304 Stainless" />
             </div>
             <div className="form-field">
               <label>Grade</label>
-              <input value={form.grade} onChange={(e) => set("grade", e.target.value)} placeholder="304" />
+              <input value={form.grade} onChange={(e) => set("grade", e.target.value)} placeholder="304 / 2B" />
             </div>
-          </div>
-          <div className="form-field">
-            <label>Category *</label>
-            <select value={form.category} onChange={(e) => set("category", e.target.value as MaterialCategory)}>
-              {(Object.keys(CATEGORY_LABELS) as MaterialCategory[]).map((c) => (
-                <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
-              ))}
-            </select>
           </div>
           <div className="form-row-2">
             <div className="form-field">
-              <label>Density (kg/m³) *</label>
-              <input required type="number" step="any" value={form.density_kg_m3} onChange={(e) => set("density_kg_m3", e.target.value)} placeholder="7930" />
+              <label>Category *</label>
+              <select value={form.category} onChange={(e) => set("category", e.target.value)}>
+                {(Object.keys(CATEGORY_LABELS) as MaterialCategory[]).map((c) => (
+                  <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                ))}
+              </select>
             </div>
             <div className="form-field">
+              <label>Density (kg/m³) *</label>
+              <input required type="number" step="1" value={form.density_kg_m3} onChange={(e) => set("density_kg_m3", e.target.value)} placeholder="7930" />
+            </div>
+          </div>
+          <div className="form-row-2">
+            <div className="form-field">
               <label>K-Factor</label>
-              <input type="number" step="0.001" value={form.k_factor} onChange={(e) => set("k_factor", e.target.value)} placeholder="0.44" />
+              <input type="number" step="0.01" value={form.k_factor} onChange={(e) => set("k_factor", e.target.value)} />
             </div>
           </div>
           <div className="form-row-2">
@@ -153,20 +156,21 @@ function AddMaterialModal({ onClose, onSaved, userId, initialValues }: MaterialM
   );
 }
 
-// ─── Sheet Size Modal ──────────────────────────────────────
+// ─── Sheet Size Modal (contextual to a material) ───────────
 
 interface SheetSizeModalProps {
   onClose: () => void;
   onSaved: () => void;
   userId: string;
-  materials: Material[];
+  /** The material this sheet size belongs to */
+  materialId: string;
+  materialName: string;
   initialValues?: SheetSize | null;
 }
 
-function SheetSizeModal({ onClose, onSaved, userId, materials, initialValues }: SheetSizeModalProps) {
+function SheetSizeModal({ onClose, onSaved, userId, materialId, materialName, initialValues }: SheetSizeModalProps) {
   const isEdit = !!initialValues;
   const [form, setForm] = useState({
-    material_id:    initialValues?.material_id ?? (materials[0]?.id ?? ""),
     width_mm:       String(initialValues?.width_mm ?? ""),
     height_mm:      String(initialValues?.height_mm ?? ""),
     thickness_mm:   String(initialValues?.thickness_mm ?? ""),
@@ -188,7 +192,7 @@ function SheetSizeModal({ onClose, onSaved, userId, materials, initialValues }: 
     startTransition(async () => {
       const payload = {
         user_id:        userId,
-        material_id:    form.material_id,
+        material_id:    materialId,
         width_mm:       parseFloat(form.width_mm),
         height_mm:      parseFloat(form.height_mm),
         thickness_mm:   parseFloat(form.thickness_mm),
@@ -223,16 +227,15 @@ function SheetSizeModal({ onClose, onSaved, userId, materials, initialValues }: 
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="modal-form">
-          <div className="form-field">
-            <label>Material *</label>
-            <select value={form.material_id} onChange={(e) => set("material_id", e.target.value)}>
-              {materials.map(m => (
-                <option key={m.id} value={m.id}>{m.name} ({m.grade ?? m.category})</option>
-              ))}
-            </select>
-          </div>
+        <div className="sheet-modal-material-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M9 3v18" />
+          </svg>
+          {materialName}
+        </div>
 
+        <form onSubmit={handleSubmit} className="modal-form">
           <div className="form-row-3">
             <div className="form-field">
               <label>Width (mm) *</label>
@@ -282,6 +285,159 @@ function SheetSizeModal({ onClose, onSaved, userId, materials, initialValues }: 
   );
 }
 
+// ─── Material Row with expandable Sheet Sizes ──────────────
+
+interface MaterialRowProps {
+  material: Material;
+  sheets: SheetSize[];
+  units: UnitSystem;
+  isSystem: boolean;
+  deletingId: string | null;
+  onEdit: () => void;
+  onDelete: () => void;
+  onAddSheet: () => void;
+  onEditSheet: (s: SheetSize) => void;
+  onDeleteSheet: (id: string) => void;
+}
+
+function MaterialRow({
+  material: m,
+  sheets,
+  units,
+  isSystem,
+  deletingId,
+  onEdit,
+  onDelete,
+  onAddSheet,
+  onEditSheet,
+  onDeleteSheet,
+}: MaterialRowProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <>
+      <tr className="mat-row-main" onClick={() => setExpanded(!expanded)} style={{ cursor: "pointer" }}>
+        <td>
+          <div className="material-name-cell">
+            <span
+              className="material-expand-arrow"
+              style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}
+            >
+              ▸
+            </span>
+            <span
+              className="material-dot"
+              style={{ background: m.color_hex ?? "#888" }}
+            />
+            <span>{m.name}</span>
+            {sheets.length > 0 && (
+              <span className="material-sheets-badge">
+                {sheets.length} sheet{sheets.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="td-muted">{m.grade ?? "—"}</td>
+        <td>{m.density_kg_m3.toLocaleString()}</td>
+        <td>{m.k_factor ?? "—"}</td>
+        <td className="td-price">
+          {formatCostPerWeight(m.cost_per_kg, units)}
+        </td>
+        <td className="td-muted">
+          {m.scrap_value_per_kg
+            ? formatCostPerWeight(m.scrap_value_per_kg, units)
+            : "—"}
+        </td>
+        <td>
+          {isSystem ? (
+            <span className="badge-system">System</span>
+          ) : (
+            <span className="badge-custom">Custom</span>
+          )}
+        </td>
+        <td>
+          {!isSystem && (
+            <div style={{ display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+              <button className="icon-btn" onClick={onEdit} title="Edit material">🖊</button>
+              <button className="icon-btn danger" onClick={onDelete} disabled={deletingId === m.id} title="Delete material">🗑</button>
+            </div>
+          )}
+        </td>
+      </tr>
+
+      {/* Expanded: Sheet Sizes child rows */}
+      {expanded && (
+        <tr className="mat-row-sheets">
+          <td colSpan={8}>
+            <div className="mat-sheets-container">
+              <div className="mat-sheets-header">
+                <span className="mat-sheets-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <path d="M3 9h18M9 3v18" />
+                  </svg>
+                  Sheet Sizes
+                </span>
+                <button
+                  className="mat-sheets-add-btn"
+                  onClick={(e) => { e.stopPropagation(); onAddSheet(); }}
+                >
+                  + Add Sheet
+                </button>
+              </div>
+
+              {sheets.length === 0 ? (
+                <div className="mat-sheets-empty">
+                  No sheet sizes for this material.
+                  <button className="mat-sheets-empty-btn" onClick={onAddSheet}>
+                    Add first sheet size →
+                  </button>
+                </div>
+              ) : (
+                <table className="mat-sheets-table">
+                  <thead>
+                    <tr>
+                      <th>Dimensions</th>
+                      <th>Thickness</th>
+                      <th>Cost / Sheet</th>
+                      <th>Stock</th>
+                      <th>Qty</th>
+                      <th>Supplier</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sheets.map(s => (
+                      <tr key={s.id}>
+                        <td className="td-mono">{s.width_mm} × {s.height_mm}mm</td>
+                        <td>{s.thickness_mm}mm</td>
+                        <td className="td-price">{s.cost_per_sheet ? `£${s.cost_per_sheet}` : "—"}</td>
+                        <td>
+                          <span className={`badge-stock ${s.in_stock ? "in-stock" : "out-of-stock"}`}>
+                            {s.in_stock ? "✓ In Stock" : "✗ Out"}
+                          </span>
+                        </td>
+                        <td>{s.quantity ?? 0}</td>
+                        <td className="td-muted">{s.supplier ?? "—"}</td>
+                        <td>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button className="icon-btn" onClick={() => onEditSheet(s)} title="Edit">🖊</button>
+                            <button className="icon-btn danger" onClick={() => onDeleteSheet(s.id)} title="Delete">🗑</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────
 
 export default function MaterialsPage() {
@@ -297,7 +453,7 @@ export default function MaterialsPage() {
 
   // Sheet sizes state
   const [sheetSizes, setSheetSizes] = useState<SheetSize[]>([]);
-  const [showSheetModal, setShowSheetModal] = useState(false);
+  const [sheetModalMaterial, setSheetModalMaterial] = useState<Material | null>(null);
   const [editingSheet, setEditingSheet] = useState<SheetSize | null>(null);
 
   async function load() {
@@ -308,7 +464,7 @@ export default function MaterialsPage() {
       setUserId(user.id);
       const [{ data: matsData }, { data: sheetsData }] = await Promise.all([
         supabase.from("materials").select("*").or(`is_system.eq.true,user_id.eq.${user.id}`).order("category").order("name"),
-        supabase.from("sheet_sizes").select("*").or(`is_system.eq.true,user_id.eq.${user.id}`).order("width_mm"),
+        supabase.from("sheet_sizes").select("*").or(`is_system.eq.true,user_id.eq.${user.id}`).order("thickness_mm").order("width_mm"),
       ]);
       setMaterials(matsData ?? []);
       setSheetSizes(sheetsData ?? []);
@@ -324,6 +480,13 @@ export default function MaterialsPage() {
     const supabase = createClient();
     await supabase.from("materials").delete().eq("id", id);
     setDeletingId(null);
+    load();
+  }
+
+  async function handleDeleteSheet(id: string) {
+    if (!confirm("Delete this sheet size?")) return;
+    const supabase = createClient();
+    await supabase.from("sheet_sizes").delete().eq("id", id);
     load();
   }
 
@@ -343,13 +506,18 @@ export default function MaterialsPage() {
     return acc;
   }, {});
 
+  // Helper: get sheets for a material
+  function sheetsForMaterial(materialId: string): SheetSize[] {
+    return sheetSizes.filter(s => s.material_id === materialId);
+  }
+
   return (
     <div className="dash-page">
       <div className="dash-page-header">
         <div>
           <h1 className="dash-page-title">Materials</h1>
           <p className="dash-page-subtitle">
-            System materials are read-only. Add your own with custom prices.
+            Manage materials and their available sheet sizes for nesting
           </p>
         </div>
         {userId && (
@@ -411,56 +579,19 @@ export default function MaterialsPage() {
                   </thead>
                   <tbody>
                     {items.map((m) => (
-                      <tr key={m.id}>
-                        <td>
-                          <div className="material-name-cell">
-                            <span
-                              className="material-dot"
-                              style={{ background: m.color_hex ?? "#888" }}
-                            />
-                            {m.name}
-                          </div>
-                        </td>
-                        <td className="td-muted">{m.grade ?? "—"}</td>
-                        <td>{m.density_kg_m3.toLocaleString()}</td>
-                        <td>{m.k_factor ?? "—"}</td>
-                        <td className="td-price">
-                          {formatCostPerWeight(m.cost_per_kg, units)}
-                        </td>
-                        <td className="td-muted">
-                          {m.scrap_value_per_kg
-                            ? formatCostPerWeight(m.scrap_value_per_kg, units)
-                            : "—"}
-                        </td>
-                        <td>
-                          {m.is_system ? (
-                            <span className="badge-system">System</span>
-                          ) : (
-                            <span className="badge-custom">Custom</span>
-                          )}
-                        </td>
-                        <td>
-                          {!m.is_system && (
-                            <div style={{ display: "flex", gap: 6 }}>
-                              <button
-                                className="icon-btn"
-                                onClick={() => setEditingMaterial(m)}
-                                title="Edit material"
-                              >
-                                🖊
-                              </button>
-                              <button
-                                className="icon-btn danger"
-                                onClick={() => handleDelete(m.id)}
-                                disabled={deletingId === m.id}
-                                title="Delete material"
-                              >
-                                🗑
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
+                      <MaterialRow
+                        key={m.id}
+                        material={m}
+                        sheets={sheetsForMaterial(m.id)}
+                        units={units}
+                        isSystem={!!m.is_system}
+                        deletingId={deletingId}
+                        onEdit={() => setEditingMaterial(m)}
+                        onDelete={() => handleDelete(m.id)}
+                        onAddSheet={() => setSheetModalMaterial(m)}
+                        onEditSheet={(s) => { setSheetModalMaterial(m); setEditingSheet(s); }}
+                        onDeleteSheet={handleDeleteSheet}
+                      />
                     ))}
                   </tbody>
                 </table>
@@ -476,82 +607,6 @@ export default function MaterialsPage() {
         </div>
       )}
 
-      {/* ── Sheet Sizes Section ── */}
-      <div className="sheet-sizes-section">
-        <div className="sheet-sizes-header">
-          <div>
-            <h2>Sheet Sizes</h2>
-            <p>Define available sheet sizes for nesting and material costing</p>
-          </div>
-          {userId && (
-            <button className="btn-primary" onClick={() => setShowSheetModal(true)}>
-              + Add Sheet Size
-            </button>
-          )}
-        </div>
-
-        {sheetSizes.length === 0 ? (
-          <div className="sheet-size-empty">
-            No sheet sizes defined yet. Add sheet sizes to enable part nesting.
-          </div>
-        ) : (
-          <div className="table-card">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Material</th>
-                  <th>Width</th>
-                  <th>Height</th>
-                  <th>Thickness</th>
-                  <th>Cost / Sheet</th>
-                  <th>Stock</th>
-                  <th>Qty</th>
-                  <th>Supplier</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sheetSizes.map(s => {
-                  const mat = materials.find(m => m.id === s.material_id);
-                  return (
-                    <tr key={s.id}>
-                      <td>
-                        <div className="material-name-cell">
-                          <span className="material-dot" style={{ background: mat?.color_hex ?? "#888" }} />
-                          {mat?.name ?? "Unknown"}
-                        </div>
-                      </td>
-                      <td>{s.width_mm}mm</td>
-                      <td>{s.height_mm}mm</td>
-                      <td>{s.thickness_mm}mm</td>
-                      <td className="td-price">{s.cost_per_sheet ? `£${s.cost_per_sheet}` : "—"}</td>
-                      <td>
-                        <span className={`badge-stock ${s.in_stock ? "in-stock" : "out-of-stock"}`}>
-                          {s.in_stock ? "In Stock" : "Out"}
-                        </span>
-                      </td>
-                      <td>{s.quantity ?? 0}</td>
-                      <td className="td-muted">{s.supplier ?? "—"}</td>
-                      <td>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button className="icon-btn" onClick={() => setEditingSheet(s)} title="Edit">🖊</button>
-                          <button className="icon-btn danger" onClick={async () => {
-                            if (!confirm("Delete this sheet size?")) return;
-                            const supabase = createClient();
-                            await supabase.from("sheet_sizes").delete().eq("id", s.id);
-                            load();
-                          }} title="Delete">🗑</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       {(showModal || editingMaterial) && userId && (
         <AddMaterialModal
           userId={userId}
@@ -561,13 +616,14 @@ export default function MaterialsPage() {
         />
       )}
 
-      {(showSheetModal || editingSheet) && userId && (
+      {(sheetModalMaterial) && userId && (
         <SheetSizeModal
           userId={userId}
-          materials={materials}
+          materialId={sheetModalMaterial.id}
+          materialName={sheetModalMaterial.name}
           initialValues={editingSheet}
-          onClose={() => { setShowSheetModal(false); setEditingSheet(null); }}
-          onSaved={() => { setShowSheetModal(false); setEditingSheet(null); load(); }}
+          onClose={() => { setSheetModalMaterial(null); setEditingSheet(null); }}
+          onSaved={() => { setSheetModalMaterial(null); setEditingSheet(null); load(); }}
         />
       )}
     </div>
