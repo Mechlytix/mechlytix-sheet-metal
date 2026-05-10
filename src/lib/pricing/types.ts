@@ -135,3 +135,93 @@ export interface PriceBreak {
     markup: number | null;
   };
 }
+
+// ─────────────────────────────────────────────────────────
+// Nesting Engine Types
+// ─────────────────────────────────────────────────────────
+
+/** Configuration for the nesting algorithm */
+export interface NestingConfig {
+  /** Gap between parts in mm (kerf + handling clearance) */
+  kerfGapMm: number;
+  /** Allow 90° rotation of parts */
+  allowRotation: boolean;
+  /** Material grain direction locked (prevents rotation) */
+  grainLocked: boolean;
+}
+
+/** A single part placed on a sheet */
+export interface SheetPlacement {
+  /** Part item ID (matches QuoteItem.id) */
+  partId: string;
+  /** Filename of the placed part */
+  filename: string;
+  /** X position on sheet (mm, from left edge) */
+  x: number;
+  /** Y position on sheet (mm, from bottom edge) */
+  y: number;
+  /** Part bounding width after rotation */
+  width: number;
+  /** Part bounding height after rotation */
+  height: number;
+  /** Whether the part was rotated 90° */
+  rotated: boolean;
+  /** SVG path data for the part outline (if DXF) */
+  svgPaths?: string[];
+  /** Original part bounding box (before rotation) */
+  originalWidth: number;
+  originalHeight: number;
+}
+
+/** Layout of a single sheet */
+export interface SheetLayout {
+  /** Sheet index (0-based) */
+  index: number;
+  /** Sheet dimensions */
+  sheetWidth: number;
+  sheetHeight: number;
+  /** Parts placed on this sheet */
+  placements: SheetPlacement[];
+  /** Utilisation percentage (0-100) */
+  utilisation: number;
+  /** Used area in mm² */
+  usedArea: number;
+  /** Scrap area in mm² */
+  scrapArea: number;
+}
+
+/** A remnant from the scrap rack that could fit the job */
+export interface RemnantCandidate {
+  id: string;
+  width: number;
+  height: number;
+  thickness: number;
+  location: string | null;
+  materialName: string;
+  /** How many parts fit on this remnant */
+  partsFit: number;
+  /** Estimated material cost savings vs. new sheet */
+  savingsEstimate: number;
+}
+
+/** Full result from the nesting engine */
+export interface NestingResult {
+  /** Per-sheet layouts */
+  sheets: SheetLayout[];
+  /** Total number of sheets required */
+  totalSheets: number;
+  /** Overall utilisation (%) */
+  overallUtilisation: number;
+  /** Total material area used (mm²) */
+  totalUsedArea: number;
+  /** Total scrap area (mm²) */
+  totalScrapArea: number;
+  /** Remnant candidates from scrap rack */
+  remnantCandidates: RemnantCandidate[];
+  /** Effective waste factor (for cost model) */
+  effectiveWasteFactor: number;
+  /** Cost per sheet if available */
+  costPerSheet: number | null;
+  /** Total material cost based on nesting */
+  totalMaterialCost: number | null;
+}

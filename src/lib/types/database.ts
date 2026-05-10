@@ -98,6 +98,7 @@ export type Database = {
           id: string
           is_default: boolean | null
           is_system: boolean | null
+          kerf_gap_mm: number | null
           machine_type: string | null
           name: string
           pierce_time_seconds: number | null
@@ -114,6 +115,7 @@ export type Database = {
           id?: string
           is_default?: boolean | null
           is_system?: boolean | null
+          kerf_gap_mm?: number | null
           machine_type?: string | null
           name: string
           pierce_time_seconds?: number | null
@@ -130,6 +132,7 @@ export type Database = {
           id?: string
           is_default?: boolean | null
           is_system?: boolean | null
+          kerf_gap_mm?: number | null
           machine_type?: string | null
           name?: string
           pierce_time_seconds?: number | null
@@ -491,10 +494,12 @@ export type Database = {
           height_mm: number
           id: string
           in_stock: boolean | null
+          is_system: boolean | null
           material_id: string
           quantity: number | null
           supplier: string | null
           thickness_mm: number
+          user_id: string | null
           width_mm: number
         }
         Insert: {
@@ -503,10 +508,12 @@ export type Database = {
           height_mm: number
           id?: string
           in_stock?: boolean | null
+          is_system?: boolean | null
           material_id: string
           quantity?: number | null
           supplier?: string | null
           thickness_mm: number
+          user_id?: string | null
           width_mm: number
         }
         Update: {
@@ -515,10 +522,12 @@ export type Database = {
           height_mm?: number
           id?: string
           in_stock?: boolean | null
+          is_system?: boolean | null
           material_id?: string
           quantity?: number | null
           supplier?: string | null
           thickness_mm?: number
+          user_id?: string | null
           width_mm?: number
         }
         Relationships: [
@@ -788,3 +797,4 @@ export type QuoteAttachment = Database["public"]["Tables"]["quote_attachments"][
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type UserSettings = Database["public"]["Tables"]["user_settings"]["Row"];
 export type Customer = Database["public"]["Tables"]["customers"]["Row"];
+export type SheetSize = Database["public"]["Tables"]["sheet_sizes"]["Row"];

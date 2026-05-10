@@ -71,6 +71,7 @@ export function MachineModal({ userId, existing, onClose, onSaved }: MachineModa
     pierce_time_seconds:   String(existing?.pierce_time_seconds ?? 0.5),
     setup_time_minutes:    String(existing?.setup_time_minutes ?? 15),
     cost_per_bend:         String(existing?.cost_per_bend ?? 2.50),
+    kerf_gap_mm:           String(existing?.kerf_gap_mm ?? 5),
     is_default:            existing?.is_default ?? false,
   });
 
@@ -121,6 +122,7 @@ export function MachineModal({ userId, existing, onClose, onSaved }: MachineModa
         pierce_time_seconds:  parseFloat(form.pierce_time_seconds) || 0.5,
         setup_time_minutes:   parseFloat(form.setup_time_minutes) || 15,
         cost_per_bend:        parseFloat(form.cost_per_bend) || 2.5,
+        kerf_gap_mm:          parseFloat(form.kerf_gap_mm) || 5,
         is_default:           form.is_default,
         feed_rates:           customFeedRates,
         updated_at:           new Date().toISOString(),
@@ -232,6 +234,18 @@ export function MachineModal({ userId, existing, onClose, onSaved }: MachineModa
                 onChange={(e) => setF("cost_per_bend", e.target.value)}
               />
             </div>
+          </div>
+
+          {/* Kerf Gap */}
+          <div className="form-field">
+            <label>Part Spacing / Kerf Gap (mm)</label>
+            <input
+              type="number" step="0.5" min="0" max="50"
+              value={form.kerf_gap_mm}
+              onChange={(e) => setF("kerf_gap_mm", e.target.value)}
+              placeholder="5"
+            />
+            <span className="form-hint">Minimum gap between parts when nesting on a sheet. Accounts for kerf width + handling clearance.</span>
           </div>
 
           {/* Default toggle */}

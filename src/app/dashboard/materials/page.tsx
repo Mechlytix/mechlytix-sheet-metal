@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboard } from "@/lib/dashboard-context";
 import { formatCostPerWeight } from "@/lib/units";
-import type { Material, MaterialCategory } from "@/lib/types/database";
+import type { Material, MaterialCategory, SheetSize } from "@/lib/types/database";
 
 // ─────────────────────────────────────────────────────────
 // /dashboard/materials — Material database CRUD
@@ -153,6 +153,135 @@ function AddMaterialModal({ onClose, onSaved, userId, initialValues }: MaterialM
   );
 }
 
+// ─── Sheet Size Modal ──────────────────────────────────────
+
+interface SheetSizeModalProps {
+  onClose: () => void;
+  onSaved: () => void;
+  userId: string;
+  materials: Material[];
+  initialValues?: SheetSize | null;
+}
+
+function SheetSizeModal({ onClose, onSaved, userId, materials, initialValues }: SheetSizeModalProps) {
+  const isEdit = !!initialValues;
+  const [form, setForm] = useState({
+    material_id:    initialValues?.material_id ?? (materials[0]?.id ?? ""),
+    width_mm:       String(initialValues?.width_mm ?? ""),
+    height_mm:      String(initialValues?.height_mm ?? ""),
+    thickness_mm:   String(initialValues?.thickness_mm ?? ""),
+    cost_per_sheet: String(initialValues?.cost_per_sheet ?? ""),
+    quantity:       String(initialValues?.quantity ?? "0"),
+    supplier:       initialValues?.supplier ?? "",
+    in_stock:       initialValues?.in_stock ?? true,
+  });
+  const [error, setError] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  const set = (k: string, v: string | boolean) => setForm(f => ({ ...f, [k]: v }));
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    const supabase = createClient();
+
+    startTransition(async () => {
+      const payload = {
+        user_id:        userId,
+        material_id:    form.material_id,
+        width_mm:       parseFloat(form.width_mm),
+        height_mm:      parseFloat(form.height_mm),
+        thickness_mm:   parseFloat(form.thickness_mm),
+        cost_per_sheet: parseFloat(form.cost_per_sheet) || null,
+        quantity:       parseInt(form.quantity) || 0,
+        supplier:       form.supplier || null,
+        in_stock:       form.in_stock,
+      };
+
+      if (isEdit && initialValues) {
+        const { error: err } = await supabase
+          .from("sheet_sizes")
+          .update(payload)
+          .eq("id", initialValues.id);
+        if (err) { setError(err.message); return; }
+      } else {
+        const { error: err } = await supabase
+          .from("sheet_sizes")
+          .insert(payload);
+        if (err) { setError(err.message); return; }
+      }
+
+      onSaved();
+    });
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{isEdit ? "Edit Sheet Size" : "Add Sheet Size"}</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="modal-form">
+          <div className="form-field">
+            <label>Material *</label>
+            <select value={form.material_id} onChange={(e) => set("material_id", e.target.value)}>
+              {materials.map(m => (
+                <option key={m.id} value={m.id}>{m.name} ({m.grade ?? m.category})</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-row-3">
+            <div className="form-field">
+              <label>Width (mm) *</label>
+              <input required type="number" step="0.1" value={form.width_mm} onChange={(e) => set("width_mm", e.target.value)} placeholder="2500" />
+            </div>
+            <div className="form-field">
+              <label>Height (mm) *</label>
+              <input required type="number" step="0.1" value={form.height_mm} onChange={(e) => set("height_mm", e.target.value)} placeholder="1250" />
+            </div>
+            <div className="form-field">
+              <label>Thickness (mm) *</label>
+              <input required type="number" step="0.1" value={form.thickness_mm} onChange={(e) => set("thickness_mm", e.target.value)} placeholder="2.0" />
+            </div>
+          </div>
+
+          <div className="form-row-2">
+            <div className="form-field">
+              <label>Cost per Sheet (£)</label>
+              <input type="number" step="0.01" value={form.cost_per_sheet} onChange={(e) => set("cost_per_sheet", e.target.value)} placeholder="45.00" />
+            </div>
+            <div className="form-field">
+              <label>Qty in Stock</label>
+              <input type="number" step="1" min="0" value={form.quantity} onChange={(e) => set("quantity", e.target.value)} />
+            </div>
+          </div>
+
+          <div className="form-field">
+            <label>Supplier</label>
+            <input value={form.supplier} onChange={(e) => set("supplier", e.target.value)} placeholder="e.g. Kloeckner Metals" />
+          </div>
+
+          <label className="machine-default-toggle">
+            <input type="checkbox" checked={form.in_stock} onChange={(e) => set("in_stock", e.target.checked)} />
+            <span>In stock</span>
+          </label>
+
+          {error && <p className="form-error">{error}</p>}
+          <div className="modal-actions">
+            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={isPending}>
+              {isPending ? "Saving…" : isEdit ? "Save Changes" : "Add Sheet Size"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────
 
 export default function MaterialsPage() {
@@ -166,19 +295,23 @@ export default function MaterialsPage() {
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Sheet sizes state
+  const [sheetSizes, setSheetSizes] = useState<SheetSize[]>([]);
+  const [showSheetModal, setShowSheetModal] = useState(false);
+  const [editingSheet, setEditingSheet] = useState<SheetSize | null>(null);
+
   async function load() {
     setLoading(true);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       setUserId(user.id);
-      const { data } = await supabase
-        .from("materials")
-        .select("*")
-        .or(`is_system.eq.true,user_id.eq.${user.id}`)
-        .order("category")
-        .order("name");
-      setMaterials(data ?? []);
+      const [{ data: matsData }, { data: sheetsData }] = await Promise.all([
+        supabase.from("materials").select("*").or(`is_system.eq.true,user_id.eq.${user.id}`).order("category").order("name"),
+        supabase.from("sheet_sizes").select("*").or(`is_system.eq.true,user_id.eq.${user.id}`).order("width_mm"),
+      ]);
+      setMaterials(matsData ?? []);
+      setSheetSizes(sheetsData ?? []);
     }
     setLoading(false);
   }
@@ -343,12 +476,98 @@ export default function MaterialsPage() {
         </div>
       )}
 
+      {/* ── Sheet Sizes Section ── */}
+      <div className="sheet-sizes-section">
+        <div className="sheet-sizes-header">
+          <div>
+            <h2>Sheet Sizes</h2>
+            <p>Define available sheet sizes for nesting and material costing</p>
+          </div>
+          {userId && (
+            <button className="btn-primary" onClick={() => setShowSheetModal(true)}>
+              + Add Sheet Size
+            </button>
+          )}
+        </div>
+
+        {sheetSizes.length === 0 ? (
+          <div className="sheet-size-empty">
+            No sheet sizes defined yet. Add sheet sizes to enable part nesting.
+          </div>
+        ) : (
+          <div className="table-card">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Material</th>
+                  <th>Width</th>
+                  <th>Height</th>
+                  <th>Thickness</th>
+                  <th>Cost / Sheet</th>
+                  <th>Stock</th>
+                  <th>Qty</th>
+                  <th>Supplier</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sheetSizes.map(s => {
+                  const mat = materials.find(m => m.id === s.material_id);
+                  return (
+                    <tr key={s.id}>
+                      <td>
+                        <div className="material-name-cell">
+                          <span className="material-dot" style={{ background: mat?.color_hex ?? "#888" }} />
+                          {mat?.name ?? "Unknown"}
+                        </div>
+                      </td>
+                      <td>{s.width_mm}mm</td>
+                      <td>{s.height_mm}mm</td>
+                      <td>{s.thickness_mm}mm</td>
+                      <td className="td-price">{s.cost_per_sheet ? `£${s.cost_per_sheet}` : "—"}</td>
+                      <td>
+                        <span className={`badge-stock ${s.in_stock ? "in-stock" : "out-of-stock"}`}>
+                          {s.in_stock ? "In Stock" : "Out"}
+                        </span>
+                      </td>
+                      <td>{s.quantity ?? 0}</td>
+                      <td className="td-muted">{s.supplier ?? "—"}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="icon-btn" onClick={() => setEditingSheet(s)} title="Edit">🖊</button>
+                          <button className="icon-btn danger" onClick={async () => {
+                            if (!confirm("Delete this sheet size?")) return;
+                            const supabase = createClient();
+                            await supabase.from("sheet_sizes").delete().eq("id", s.id);
+                            load();
+                          }} title="Delete">🗑</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {(showModal || editingMaterial) && userId && (
         <AddMaterialModal
           userId={userId}
           initialValues={editingMaterial ?? undefined}
           onClose={() => { setShowModal(false); setEditingMaterial(null); }}
           onSaved={() => { setShowModal(false); setEditingMaterial(null); load(); }}
+        />
+      )}
+
+      {(showSheetModal || editingSheet) && userId && (
+        <SheetSizeModal
+          userId={userId}
+          materials={materials}
+          initialValues={editingSheet}
+          onClose={() => { setShowSheetModal(false); setEditingSheet(null); }}
+          onSaved={() => { setShowSheetModal(false); setEditingSheet(null); load(); }}
         />
       )}
     </div>

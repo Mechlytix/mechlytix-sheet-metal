@@ -7,10 +7,13 @@ import { useDashboard } from "@/lib/dashboard-context";
 import { parseDXFGeometry } from "@/lib/dxf/parse-dxf";
 import { calculatePrice } from "@/lib/pricing/cost-model";
 import { getFeedRateWithCustom } from "@/lib/pricing/feed-rates";
+import { nestParts } from "@/lib/pricing/nest-engine";
+import type { NestingPart, NestingSheet, AvailableRemnant } from "@/lib/pricing/nest-engine";
 import { formatCurrency, formatLength } from "@/lib/units";
-import type { PricingGeometry, PricingResult, DXFIntent, PriceBreak } from "@/lib/pricing/types";
-import type { Material, MachineProfile } from "@/lib/types/database";
+import type { PricingGeometry, PricingResult, DXFIntent, PriceBreak, NestingResult } from "@/lib/pricing/types";
+import type { Material, MachineProfile, SheetSize } from "@/lib/types/database";
 import { DxfViewer } from "@/components/DxfViewer";
+import { NestingPreview } from "@/components/NestingPreview";
 import { CustomerSelector } from "@/components/CustomerSelector";
 import type { CustomerSelection } from "@/components/CustomerSelector";
 
@@ -273,6 +276,15 @@ export default function QuoterPage() {
 
   const [result, setResult] = useState<PricingResult | null>(null);
 
+  // ── Nesting state ──
+  const [viewerTab, setViewerTab] = useState<"part" | "nesting">("part");
+  const [sheetSizes, setSheetSizes] = useState<SheetSize[]>([]);
+  const [selectedSheetId, setSelectedSheetId] = useState<string>("");
+  const [nestingResult, setNestingResult] = useState<NestingResult | null>(null);
+  const [allowRotation, setAllowRotation] = useState(true);
+  const [grainLocked, setGrainLocked] = useState(false);
+  const [remnants, setRemnants] = useState<AvailableRemnant[]>([]);
+
   useEffect(() => {
     async function load() {
       const supabase = createClient();
@@ -280,13 +292,28 @@ export default function QuoterPage() {
       if (!user) return;
       setUserId(user.id);
 
-      const [{ data: mats }, { data: machs }, { data: settings }] = await Promise.all([
+      const [{ data: mats }, { data: machs }, { data: settings }, { data: sheets }, { data: rems }] = await Promise.all([
         supabase.from("materials").select("*").or(`is_system.eq.true,user_id.eq.${user.id}`).order("category").order("name"),
         supabase.from("machine_profiles").select("*").or(`is_system.eq.true,user_id.eq.${user.id}`).order("name"),
         supabase.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
+        supabase.from("sheet_sizes").select("*").or(`is_system.eq.true,user_id.eq.${user.id}`),
+        supabase.from("remnants").select("*, materials(name)").eq("user_id", user.id).eq("status", "available"),
       ]);
       setMaterials(mats ?? []);
       setMachines(machs ?? []);
+      setSheetSizes(sheets ?? []);
+
+      // Map remnants to AvailableRemnant shape
+      if (rems) {
+        setRemnants(rems.map((r: Record<string, unknown>) => ({
+          id: r.id as string,
+          width: r.width_mm as number,
+          height: r.height_mm as number,
+          thickness: r.thickness_mm as number,
+          location: r.location as string | null,
+          materialName: (r.materials as Record<string, unknown> | null)?.name as string ?? "Unknown",
+        })));
+      }
 
       if (settings) setDefaultMarkup(settings.default_markup_percent ?? 15);
       if (mats && mats.length > 0) setDefaultMaterialId(mats[0].id);
@@ -381,6 +408,84 @@ export default function QuoterPage() {
     }
 
   }, [phase.name, activeItem, effectiveGeometry, materials, machines, updateActiveItem]);
+
+  // ── Nesting computation (reactive) ──
+  const kerfGapMm = useMemo(() => {
+    if (!activeItem) return 5;
+    const mach = machines.find(m => m.id === activeItem.machineId);
+    return mach?.kerf_gap_mm ?? 5;
+  }, [activeItem, machines]);
+
+  const [localKerfGap, setLocalKerfGap] = useState(5);
+  useEffect(() => { setLocalKerfGap(kerfGapMm); }, [kerfGapMm]);
+
+  // Filter sheet sizes by selected material+thickness
+  const filteredSheetSizes = useMemo(() => {
+    if (!activeItem) return [];
+    const mat = materials.find(m => m.id === activeItem.materialId);
+    if (!mat) return [];
+    const thick = activeItem.thickness || activeItem.geometry.thickness || 0;
+    return sheetSizes.filter(s =>
+      s.material_id === activeItem.materialId &&
+      (thick <= 0 || Math.abs(s.thickness_mm - thick) < 0.01)
+    );
+  }, [activeItem, materials, sheetSizes]);
+
+  // Auto-select first sheet size when filter changes
+  useEffect(() => {
+    if (filteredSheetSizes.length > 0 && !filteredSheetSizes.find(s => s.id === selectedSheetId)) {
+      setSelectedSheetId(filteredSheetSizes[0].id);
+    }
+  }, [filteredSheetSizes, selectedSheetId]);
+
+  // Compute nesting result
+  useEffect(() => {
+    if (!activeItem || items.length === 0 || (phase.name !== "ready" && phase.name !== "saving")) {
+      setNestingResult(null);
+      return;
+    }
+
+    const selectedSheet = filteredSheetSizes.find(s => s.id === selectedSheetId);
+    if (!selectedSheet) {
+      setNestingResult(null);
+      return;
+    }
+
+    const nestingParts: NestingPart[] = items.map(item => ({
+      id: item.id,
+      filename: item.filename,
+      width: item.geometry.boundingWidth,
+      height: item.geometry.boundingHeight,
+      area: item.geometry.partArea || item.geometry.boundingWidth * item.geometry.boundingHeight * 0.8,
+      quantity: item.quantity,
+      svgPaths: item.geometry.dxfData?.paths
+        .filter(p => {
+          const intent = item.pathIntents[p.id] || item.layerIntents[p.layer] || "cut";
+          return intent === "cut";
+        })
+        .map(p => p.svgPath),
+    }));
+
+    const sheet: NestingSheet = {
+      width: selectedSheet.width_mm,
+      height: selectedSheet.height_mm,
+      costPerSheet: selectedSheet.cost_per_sheet,
+    };
+
+    // Filter remnants matching material+thickness
+    const matchingRemnants = remnants.filter(r => {
+      const thick = activeItem.thickness || activeItem.geometry.thickness || 0;
+      return thick <= 0 || Math.abs(r.thickness - thick) < 0.5;
+    });
+
+    const nr = nestParts(
+      nestingParts,
+      sheet,
+      { kerfGapMm: localKerfGap, allowRotation, grainLocked },
+      matchingRemnants,
+    );
+    setNestingResult(nr);
+  }, [items, activeItem, selectedSheetId, filteredSheetSizes, localKerfGap, allowRotation, grainLocked, remnants, phase.name]);
 
   const onFiles = useCallback(async (files: File[]) => {
     setPhase({ name: "analyzing", filenames: files.map(f => f.name) });
@@ -604,16 +709,56 @@ export default function QuoterPage() {
 
             {/* Viewer + side config split */}
             <div className="viewer-split">
-              {/* DXF Viewer */}
+              {/* Viewer area with tab toggle */}
               <div className="viewer-split-viewer">
-                <DxfViewer
-                  geometry={activeItem.geometry}
-                  layerIntents={activeItem.layerIntents}
-                  pathIntents={activeItem.pathIntents}
-                  onPathIntentChange={(pid, newIntent) => {
-                    updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: newIntent } });
-                  }}
-                />
+                {/* Tab Toggle: Part View / Nesting */}
+                <div className="viewer-tab-toggle">
+                  <button
+                    className={`viewer-tab-btn ${viewerTab === "part" ? "active" : ""}`}
+                    onClick={() => setViewerTab("part")}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    Part View
+                  </button>
+                  <button
+                    className={`viewer-tab-btn ${viewerTab === "nesting" ? "active" : ""}`}
+                    onClick={() => setViewerTab("nesting")}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+                    Nesting
+                    {nestingResult && (
+                      <span style={{ fontSize: 10, opacity: 0.8 }}>
+                        {nestingResult.overallUtilisation}%
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {viewerTab === "part" ? (
+                  <DxfViewer
+                    geometry={activeItem.geometry}
+                    layerIntents={activeItem.layerIntents}
+                    pathIntents={activeItem.pathIntents}
+                    onPathIntentChange={(pid, newIntent) => {
+                      updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: newIntent } });
+                    }}
+                  />
+                ) : (
+                  <NestingPreview
+                    result={nestingResult}
+                    kerfGapMm={localKerfGap}
+                    allowRotation={allowRotation}
+                    grainLocked={grainLocked}
+                    onKerfChange={setLocalKerfGap}
+                    onRotationToggle={() => setAllowRotation(prev => !prev)}
+                    onGrainLockToggle={() => {
+                      setGrainLocked(prev => {
+                        if (!prev) setAllowRotation(false);
+                        return !prev;
+                      });
+                    }}
+                  />
+                )}
               </div>
 
               {/* Side panel: geo + layers + config */}
@@ -621,7 +766,7 @@ export default function QuoterPage() {
                 {effectiveGeometry && <GeometryCard geo={effectiveGeometry} units={units} />}
 
                 {/* DXF Layer Intent Mapper */}
-                {activeItem.geometry.inputType === "dxf" && activeItem.geometry.dxfData && (
+                {viewerTab === "part" && activeItem.geometry.inputType === "dxf" && activeItem.geometry.dxfData && (
                   <div className="dxf-layers-panel">
                     <p className="dxf-layers-title">DXF Layers</p>
                     <p className="dxf-layers-hint">Click lines in viewer or assign below</p>
@@ -647,6 +792,37 @@ export default function QuoterPage() {
                         );
                       })}
                     </div>
+                  </div>
+                )}
+
+                {/* Sheet Size Selector (shown in nesting tab) */}
+                {viewerTab === "nesting" && (
+                  <div className="nest-sheet-selector">
+                    <label>Sheet Size</label>
+                    {filteredSheetSizes.length > 0 ? (
+                      <select
+                        className="nest-sheet-select"
+                        value={selectedSheetId}
+                        onChange={(e) => setSelectedSheetId(e.target.value)}
+                      >
+                        {filteredSheetSizes.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.width_mm} × {s.height_mm}mm
+                            {s.thickness_mm ? ` (${s.thickness_mm}mm)` : ""}
+                            {s.cost_per_sheet ? ` — £${s.cost_per_sheet}` : ""}
+                            {s.in_stock === false ? " (out of stock)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p style={{ fontSize: 11, color: "var(--text-dim)", margin: 0 }}>
+                        No sheet sizes defined for this material/thickness.
+                        <br />
+                        <a href="/dashboard/materials" style={{ color: "var(--accent-primary)", fontSize: 11 }}>
+                          Add sheet sizes →
+                        </a>
+                      </p>
+                    )}
                   </div>
                 )}
 
