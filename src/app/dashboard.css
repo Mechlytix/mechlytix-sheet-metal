@@ -4347,3 +4347,213 @@
   font-weight: 600;
   color: var(--accent-primary);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   PER-TIER NESTING — NEW CONTROLS
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Side panel section grouping ────────────────────────── */
+.nest-side-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+/* ── Mode toggle ─────────────────────────────────────────── */
+.nest-mode-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.nest-mode-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.nest-mode-btn:hover {
+  border-color: var(--border-active);
+  color: var(--text-secondary);
+}
+
+.nest-mode-btn.active {
+  border-color: var(--accent-primary);
+  background: rgba(255, 102, 0, 0.1);
+  color: var(--accent-primary);
+}
+
+/* ── Tier selector ───────────────────────────────────────── */
+.nest-tier-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nest-tier-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.nest-tier-btn:hover {
+  border-color: var(--border-active);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.nest-tier-btn.active {
+  border-color: var(--accent-primary);
+  background: rgba(255, 102, 0, 0.08);
+}
+
+.nest-tier-btn-qty {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.nest-tier-btn.active .nest-tier-btn-qty {
+  color: var(--accent-primary);
+}
+
+.nest-tier-btn-base {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+
+.nest-tier-btn-sheets {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.nest-tier-btn.active .nest-tier-btn-sheets {
+  color: var(--accent-primary);
+  border-color: rgba(255, 102, 0, 0.3);
+  background: rgba(255, 102, 0, 0.06);
+}
+
+/* ── Individual mode: file tabs ─────────────────────────── */
+.nest-individual-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nest-file-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.nest-file-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.nest-file-tab:hover {
+  border-color: var(--border-active);
+  color: var(--text-secondary);
+}
+
+.nest-file-tab.active {
+  border-color: var(--accent-primary);
+  background: rgba(255, 102, 0, 0.08);
+  color: var(--accent-primary);
+}
+
+.nest-file-tab-name {
+  font-weight: 600;
+}
+
+.nest-file-tab-sheets {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.nest-file-tab.active .nest-file-tab-sheets {
+  color: var(--accent-primary);
+}
+
+/* ── Result viewer (inner component) ────────────────────── */
+.nest-result-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nest-file-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  align-self: flex-start;
+}
+
+/* ── Tier table nesting columns ─────────────────────────── */
+.tier-table-nesting-col {
+  color: var(--accent-primary) !important;
+  font-weight: 600;
+  font-size: 12px;
+  border-left: 1px solid rgba(255, 102, 0, 0.15) !important;
+}
+
+th.tier-table-nesting-col {
+  color: rgba(255, 102, 0, 0.7) !important;
+  font-size: 10px;
+}
+
+/* Material cell overridden by sheet cost */
+.tier-val-nesting {
+  color: #22c55e !important;
+  position: relative;
+}

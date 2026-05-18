@@ -4,6 +4,10 @@
 
 export type DXFIntent = "cut" | "bend" | "ignore";
 
+/** Whether all uploaded files share sheets or each gets its own run */
+export type NestingMode = "combined" | "individual";
+
+
 export interface DXFPath {
   id: string;
   layer: string;
@@ -227,4 +231,31 @@ export interface NestingResult {
   costPerSheet: number | null;
   /** Total material cost based on nesting */
   totalMaterialCost: number | null;
+}
+
+// ─────────────────────────────────────────────────────────
+// Per-Tier Nesting Types
+// ─────────────────────────────────────────────────────────
+
+/** A single file's nesting result in individual mode */
+export interface FileNestingResult {
+  itemId: string;
+  filename: string;
+  result: NestingResult;
+}
+
+/**
+ * Nesting computed for one specific quantity tier.
+ * Holds either a combined result (all parts share sheets)
+ * or per-file results (each file nested independently).
+ */
+export interface TierNestingResult {
+  /** The quantity this was computed for */
+  quantity: number;
+  /** True if this is the base item quantity (not a price break) */
+  isBase: boolean;
+  /** Combined result — all files share sheets (combined mode) */
+  combined?: NestingResult;
+  /** Per-file results — each file on its own sheets (individual mode) */
+  perFile?: FileNestingResult[];
 }

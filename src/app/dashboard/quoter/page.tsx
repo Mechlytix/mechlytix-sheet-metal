@@ -10,7 +10,7 @@ import { getFeedRateWithCustom } from "@/lib/pricing/feed-rates";
 import { nestParts } from "@/lib/pricing/nest-engine";
 import type { NestingPart, NestingSheet, AvailableRemnant } from "@/lib/pricing/nest-engine";
 import { formatCurrency, formatLength } from "@/lib/units";
-import type { PricingGeometry, PricingResult, DXFIntent, PriceBreak, NestingResult } from "@/lib/pricing/types";
+import type { PricingGeometry, PricingResult, DXFIntent, PriceBreak, TierNestingResult, NestingMode, FileNestingResult } from "@/lib/pricing/types";
 import type { Material, MachineProfile, SheetSize } from "@/lib/types/database";
 import { DxfViewer } from "@/components/DxfViewer";
 import { NestingPreview } from "@/components/NestingPreview";
@@ -280,7 +280,9 @@ export default function QuoterPage() {
   const [viewerTab, setViewerTab] = useState<"part" | "nesting">("part");
   const [sheetSizes, setSheetSizes] = useState<SheetSize[]>([]);
   const [selectedSheetId, setSelectedSheetId] = useState<string>("");
-  const [nestingResult, setNestingResult] = useState<NestingResult | null>(null);
+  const [tierNestingResults, setTierNestingResults] = useState<TierNestingResult[]>([]);
+  const [selectedNestTierQty, setSelectedNestTierQty] = useState<number | null>(null);
+  const [nestingMode, setNestingMode] = useState<NestingMode>("combined");
   const [allowRotation, setAllowRotation] = useState(true);
   const [grainLocked, setGrainLocked] = useState(false);
   const [remnants, setRemnants] = useState<AvailableRemnant[]>([]);
@@ -438,36 +440,20 @@ export default function QuoterPage() {
     }
   }, [filteredSheetSizes, selectedSheetId]);
 
-  // Compute nesting result
+  // ── Compute nesting for ALL tiers ──
   useEffect(() => {
     if (!activeItem || items.length === 0 || (phase.name !== "ready" && phase.name !== "saving")) {
-      setNestingResult(null);
+      setTierNestingResults([]);
+      setSelectedNestTierQty(null);
       return;
     }
 
     const selectedSheet = filteredSheetSizes.find(s => s.id === selectedSheetId);
     if (!selectedSheet) {
-      setNestingResult(null);
+      setTierNestingResults([]);
+      setSelectedNestTierQty(null);
       return;
     }
-
-    const nestingParts: NestingPart[] = items.map(item => ({
-      id: item.id,
-      filename: item.filename,
-      width: item.geometry.boundingWidth,
-      height: item.geometry.boundingHeight,
-      area: item.geometry.partArea || item.geometry.boundingWidth * item.geometry.boundingHeight * 0.8,
-      quantity: item.quantity,
-      svgPaths: item.geometry.dxfData?.paths
-        .filter(p => {
-          const intent = item.pathIntents[p.id] || item.layerIntents[p.layer] || "cut";
-          return intent === "cut";
-        })
-        .map(p => p.svgPath),
-      // Pass DXF bounding box origin so the renderer can normalise path coords to (0,0)
-      svgMinX: item.geometry.dxfData?.minX ?? 0,
-      svgMinY: item.geometry.dxfData?.minY ?? 0,
-    }));
 
     const sheet: NestingSheet = {
       width: selectedSheet.width_mm,
@@ -475,20 +461,83 @@ export default function QuoterPage() {
       costPerSheet: selectedSheet.cost_per_sheet,
     };
 
-    // Filter remnants matching material+thickness
     const matchingRemnants = remnants.filter(r => {
       const thick = activeItem.thickness || activeItem.geometry.thickness || 0;
       return thick <= 0 || Math.abs(r.thickness - thick) < 0.5;
     });
 
-    const nr = nestParts(
-      nestingParts,
-      sheet,
-      { kerfGapMm: localKerfGap, allowRotation, grainLocked },
-      matchingRemnants,
-    );
-    setNestingResult(nr);
-  }, [items, activeItem, selectedSheetId, filteredSheetSizes, localKerfGap, allowRotation, grainLocked, remnants, phase.name]);
+    const config = { kerfGapMm: localKerfGap, allowRotation, grainLocked };
+    const baseQty = activeItem.quantity;
+
+    // All tier quantities: base + every price break
+    const allTierQtys = [
+      { qty: baseQty, isBase: true },
+      ...activeItem.priceBreaks.map(pb => ({ qty: pb.quantity, isBase: false })),
+    ];
+
+    // Helper: build NestingPart[] for a given tier quantity
+    function buildParts(tierQty: number): NestingPart[] {
+      const scale = baseQty > 0 ? tierQty / baseQty : 1;
+      return items.map(item => ({
+        id: item.id,
+        filename: item.filename,
+        width: item.geometry.boundingWidth,
+        height: item.geometry.boundingHeight,
+        area: item.geometry.partArea || item.geometry.boundingWidth * item.geometry.boundingHeight * 0.8,
+        quantity: Math.max(1, Math.round(item.quantity * scale)),
+        svgPaths: item.geometry.dxfData?.paths
+          .filter(p => {
+            const intent = item.pathIntents[p.id] || item.layerIntents[p.layer] || "cut";
+            return intent === "cut";
+          })
+          .map(p => p.svgPath),
+        svgMinX: item.geometry.dxfData?.minX ?? 0,
+        svgMinY: item.geometry.dxfData?.minY ?? 0,
+      }));
+    }
+
+    const results: TierNestingResult[] = allTierQtys.map(({ qty, isBase }) => {
+      if (nestingMode === "combined") {
+        const combined = nestParts(buildParts(qty), sheet, config, matchingRemnants);
+        return { quantity: qty, isBase, combined };
+      } else {
+        // Individual: nest each file separately
+        const scale = baseQty > 0 ? qty / baseQty : 1;
+        const perFile: FileNestingResult[] = items.map(item => {
+          const part: NestingPart = {
+            id: item.id,
+            filename: item.filename,
+            width: item.geometry.boundingWidth,
+            height: item.geometry.boundingHeight,
+            area: item.geometry.partArea || item.geometry.boundingWidth * item.geometry.boundingHeight * 0.8,
+            quantity: Math.max(1, Math.round(item.quantity * scale)),
+            svgPaths: item.geometry.dxfData?.paths
+              .filter(p => {
+                const intent = item.pathIntents[p.id] || item.layerIntents[p.layer] || "cut";
+                return intent === "cut";
+              })
+              .map(p => p.svgPath),
+            svgMinX: item.geometry.dxfData?.minX ?? 0,
+            svgMinY: item.geometry.dxfData?.minY ?? 0,
+          };
+          return {
+            itemId: item.id,
+            filename: item.filename,
+            result: nestParts([part], sheet, config, matchingRemnants),
+          };
+        });
+        return { quantity: qty, isBase, perFile };
+      }
+    });
+
+    setTierNestingResults(results);
+    // Auto-select base tier if nothing selected yet, or keep existing selection if valid
+    setSelectedNestTierQty(prev => {
+      const validQtys = results.map(r => r.quantity);
+      if (prev !== null && validQtys.includes(prev)) return prev;
+      return baseQty;
+    });
+  }, [items, activeItem, selectedSheetId, filteredSheetSizes, localKerfGap, allowRotation, grainLocked, remnants, phase.name, nestingMode]);
 
   const onFiles = useCallback(async (files: File[]) => {
     setPhase({ name: "analyzing", filenames: files.map(f => f.name) });
@@ -729,11 +778,15 @@ export default function QuoterPage() {
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
                     Nesting
-                    {nestingResult && (
-                      <span style={{ fontSize: 10, opacity: 0.8 }}>
-                        {nestingResult.overallUtilisation}%
-                      </span>
-                    )}
+                    {tierNestingResults.length > 0 && (() => {
+                      const base = tierNestingResults.find(t => t.isBase);
+                      const util = nestingMode === "combined"
+                        ? base?.combined?.overallUtilisation
+                        : undefined;
+                      return util != null ? (
+                        <span style={{ fontSize: 10, opacity: 0.8 }}>{util}%</span>
+                      ) : null;
+                    })()}
                   </button>
                 </div>
 
@@ -748,7 +801,11 @@ export default function QuoterPage() {
                   />
                 ) : (
                   <NestingPreview
-                    result={nestingResult}
+                    tierResults={tierNestingResults}
+                    selectedTierQty={selectedNestTierQty}
+                    onTierChange={setSelectedNestTierQty}
+                    nestingMode={nestingMode}
+                    onNestingModeChange={setNestingMode}
                     kerfGapMm={localKerfGap}
                     allowRotation={allowRotation}
                     grainLocked={grainLocked}
@@ -798,35 +855,92 @@ export default function QuoterPage() {
                   </div>
                 )}
 
-                {/* Sheet Size Selector (shown in nesting tab) */}
+                {/* Nesting tab: mode toggle + tier selector + sheet selector */}
                 {viewerTab === "nesting" && (
-                  <div className="nest-sheet-selector">
-                    <label>Sheet Size</label>
-                    {filteredSheetSizes.length > 0 ? (
-                      <select
-                        className="nest-sheet-select"
-                        value={selectedSheetId}
-                        onChange={(e) => setSelectedSheetId(e.target.value)}
-                      >
-                        {filteredSheetSizes.map(s => (
-                          <option key={s.id} value={s.id}>
-                            {s.width_mm} × {s.height_mm}mm
-                            {s.thickness_mm ? ` (${s.thickness_mm}mm)` : ""}
-                            {s.cost_per_sheet ? ` — £${s.cost_per_sheet}` : ""}
-                            {s.in_stock === false ? " (out of stock)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <p style={{ fontSize: 11, color: "var(--text-dim)", margin: 0 }}>
-                        No sheet sizes defined for this material/thickness.
-                        <br />
-                        <a href="/dashboard/materials" style={{ color: "var(--accent-primary)", fontSize: 11 }}>
-                          Add sheet sizes →
-                        </a>
-                      </p>
+                  <>
+                    {/* Mode toggle */}
+                    <div className="nest-side-section">
+                      <p className="dxf-layers-title">Nesting Mode</p>
+                      <div className="nest-mode-toggle">
+                        <button
+                          className={`nest-mode-btn ${nestingMode === "combined" ? "active" : ""}`}
+                          onClick={() => setNestingMode("combined")}
+                          title="All files share sheets"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="2" y="3" width="9" height="9" rx="1"/><rect x="13" y="3" width="9" height="9" rx="1"/>
+                            <rect x="7" y="14" width="10" height="7" rx="1"/>
+                          </svg>
+                          Combined
+                        </button>
+                        <button
+                          className={`nest-mode-btn ${nestingMode === "individual" ? "active" : ""}`}
+                          onClick={() => setNestingMode("individual")}
+                          title="Each file gets its own sheets"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/>
+                          </svg>
+                          Individual
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Tier selector */}
+                    {tierNestingResults.length > 0 && (
+                      <div className="nest-side-section">
+                        <p className="dxf-layers-title">Quantity Tier</p>
+                        <div className="nest-tier-selector">
+                          {tierNestingResults.map(t => {
+                            const sheets = nestingMode === "combined"
+                              ? t.combined?.totalSheets
+                              : t.perFile?.reduce((s, f) => s + f.result.totalSheets, 0);
+                            return (
+                              <button
+                                key={t.quantity}
+                                className={`nest-tier-btn ${selectedNestTierQty === t.quantity ? "active" : ""}`}
+                                onClick={() => setSelectedNestTierQty(t.quantity)}
+                              >
+                                <span className="nest-tier-btn-qty">
+                                  {t.quantity} pc{t.quantity !== 1 ? "s" : ""}
+                                  {t.isBase && <span className="nest-tier-btn-base">&nbsp;Base</span>}
+                                </span>
+                                {sheets != null && (
+                                  <span className="nest-tier-btn-sheets">{sheets} sheet{sheets !== 1 ? "s" : ""}</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     )}
-                  </div>
+
+                    {/* Sheet size selector */}
+                    <div className="nest-side-section">
+                      <p className="dxf-layers-title">Sheet Size</p>
+                      {filteredSheetSizes.length > 0 ? (
+                        <select
+                          className="nest-sheet-select"
+                          value={selectedSheetId}
+                          onChange={(e) => setSelectedSheetId(e.target.value)}
+                        >
+                          {filteredSheetSizes.map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.width_mm} × {s.height_mm}mm
+                              {s.thickness_mm ? ` (${s.thickness_mm}mm)` : ""}
+                              {s.cost_per_sheet ? ` — £${s.cost_per_sheet}` : ""}
+                              {s.in_stock === false ? " (out of stock)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p style={{ fontSize: 11, color: "var(--text-dim)", margin: 0 }}>
+                          No sheet sizes for this material/thickness.<br />
+                          <a href="/dashboard/materials" style={{ color: "var(--accent-primary)", fontSize: 11 }}>Add sheet sizes →</a>
+                        </p>
+                      )}
+                    </div>
+                  </>
                 )}
 
                 {/* Configuration */}
@@ -874,6 +988,12 @@ export default function QuoterPage() {
                       <th style={{ textAlign: "right", width: 80 }}>CUTTING</th>
                       <th style={{ textAlign: "right", width: 80 }}>BENDING</th>
                       <th style={{ textAlign: "right", width: 80 }}>SETUP</th>
+                      {tierNestingResults.length > 0 && (
+                        <>
+                          <th className="tier-table-nesting-col" style={{ textAlign: "right", width: 60 }}>SHEETS</th>
+                          <th className="tier-table-nesting-col" style={{ textAlign: "right", width: 60 }}>UTIL %</th>
+                        </>
+                      )}
                       <th style={{ textAlign: "right", width: 90 }}>MARKUP %</th>
                       <th style={{ textAlign: "left", width: 120 }}>LEAD TIME</th>
                       <th style={{ textAlign: "right", width: 90 }}>UNIT PRICE</th>
@@ -883,44 +1003,105 @@ export default function QuoterPage() {
                   <tbody>
                     <tr>
                       <td style={{ fontWeight: 600 }}>{activeItem.quantity} <small>(Base)</small></td>
-                      <td className="tier-val-auto">{formatCurrency(result?.materialCostPerPart ?? 0)}</td>
-                      <td className="tier-val-auto">{formatCurrency(result?.cuttingCostPerPart ?? 0)}</td>
-                      <td className="tier-val-auto">{formatCurrency(result?.bendingCostPerPart ?? 0)}</td>
-                      <td className="tier-val-auto">{formatCurrency(result?.setupCostPerPart ?? 0)}</td>
-                      <td className="tier-val-auto">{activeItem.markup} <span style={{ fontSize: 10, color: "var(--text-dim)" }}>%</span></td>
-                      <td className="tier-val-auto" style={{ textAlign: "left" }}>{activeItem.leadTime}</td>
-                      <td className="tier-val-highlight">{formatCurrency(result?.unitPrice ?? 0)}</td>
-                      <td></td>
+                      {(() => {
+                        // Use sheet cost for material if available
+                        const baseNest = tierNestingResults.find(t => t.isBase);
+                        const sheetCost = nestingMode === "combined"
+                          ? baseNest?.combined?.totalMaterialCost
+                          : baseNest?.perFile?.reduce((s, f) => s + (f.result.totalMaterialCost ?? 0), 0);
+                        const matCost = sheetCost != null
+                          ? sheetCost / activeItem.quantity
+                          : (result?.materialCostPerPart ?? 0);
+                        const baseSheets = nestingMode === "combined"
+                          ? baseNest?.combined?.totalSheets
+                          : baseNest?.perFile?.reduce((s, f) => s + f.result.totalSheets, 0);
+                        const baseUtil = nestingMode === "combined"
+                          ? baseNest?.combined?.overallUtilisation
+                          : undefined;
+                        const cuttingCost = result?.cuttingCostPerPart ?? 0;
+                        const bendingCost = result?.bendingCostPerPart ?? 0;
+                        const setupCost = result?.setupCostPerPart ?? 0;
+                        const net = matCost + cuttingCost + bendingCost + setupCost;
+                        const unitPrice = net * (1 + activeItem.markup / 100);
+                        return (
+                          <>
+                            <td className="tier-val-auto">{formatCurrency(matCost)}</td>
+                            <td className="tier-val-auto">{formatCurrency(cuttingCost)}</td>
+                            <td className="tier-val-auto">{formatCurrency(bendingCost)}</td>
+                            <td className="tier-val-auto">{formatCurrency(setupCost)}</td>
+                            {tierNestingResults.length > 0 && (
+                              <>
+                                <td className="tier-table-nesting-col" style={{ textAlign: "right" }}>{baseSheets ?? "—"}</td>
+                                <td className="tier-table-nesting-col" style={{ textAlign: "right" }}>{baseUtil != null ? `${baseUtil}%` : "—"}</td>
+                              </>
+                            )}
+                            <td className="tier-val-auto">{activeItem.markup} <span style={{ fontSize: 10, color: "var(--text-dim)" }}>%</span></td>
+                            <td className="tier-val-auto" style={{ textAlign: "left" }}>{activeItem.leadTime}</td>
+                            <td className="tier-val-highlight">{formatCurrency(sheetCost != null ? unitPrice : (result?.unitPrice ?? 0))}</td>
+                            <td></td>
+                          </>
+                        );
+                      })()}
                     </tr>
-                    {activeItem.priceBreaks.map((pb, i) => (
-                      <tr key={i}>
-                        <td>
-                          <input type="number" className="tier-editable-input" value={pb.quantity} onChange={(e) => updateActiveItem({
-                            priceBreaks: activeItem.priceBreaks.map((p, idx) => idx === i ? { ...p, quantity: Math.max(1, +e.target.value) } : p)
-                          })} style={{ textAlign: "left", width: 60, paddingLeft: 8 }} />
-                        </td>
-                        <td className="tier-val-auto">{formatCurrency(pb.materialCostPerPart)}</td>
-                        <td className="tier-val-auto">{formatCurrency(pb.cuttingCostPerPart)}</td>
-                        <td className="tier-val-auto">{formatCurrency(pb.bendingCostPerPart)}</td>
-                        <td className="tier-val-auto">{formatCurrency(pb.setupCostPerPart)}</td>
-                        <td style={{ width: 90 }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>
-                            <input
-                              className={`tier-editable-input ${pb.overrides.markup !== null ? "overridden" : ""}`}
-                              value={pb.overrides.markup ?? activeItem.markup}
-                              onChange={(e) => updateOverride(i, "markup", e.target.value)}
-                              style={{ textAlign: "right", width: 36, padding: 0, flex: "0 0 auto" }}
-                            />
-                            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>%</span>
-                          </div>
-                        </td>
-                        <td style={{ textAlign: "left" }}>
-                          <input className="tier-editable-input" value={pb.leadTime ?? ""} onChange={(e) => updateTierLeadTime(i, e.target.value)} style={{ textAlign: "left", padding: 0 }} />
-                        </td>
-                        <td className="tier-val-highlight">{formatCurrency(pb.unitPrice)}</td>
-                        <td><button className="btn-tier-remove" onClick={() => removeTier(i)}>×</button></td>
-                      </tr>
-                    ))}
+                    {activeItem.priceBreaks.map((pb, i) => {
+                      const pbNest = tierNestingResults.find(t => t.quantity === pb.quantity);
+                      const sheetCost = nestingMode === "combined"
+                        ? pbNest?.combined?.totalMaterialCost
+                        : pbNest?.perFile?.reduce((s, f) => s + (f.result.totalMaterialCost ?? 0), 0);
+                      const nestSheets = nestingMode === "combined"
+                        ? pbNest?.combined?.totalSheets
+                        : pbNest?.perFile?.reduce((s, f) => s + f.result.totalSheets, 0);
+                      const nestUtil = nestingMode === "combined"
+                        ? pbNest?.combined?.overallUtilisation
+                        : undefined;
+
+                      // Override material cost with sheet cost per part if available
+                      const matCost = sheetCost != null
+                        ? sheetCost / pb.quantity
+                        : (pb.overrides.material ?? pb.materialCostPerPart);
+                      const cuttingCost  = pb.overrides.cutting  ?? pb.cuttingCostPerPart;
+                      const bendingCost  = pb.overrides.bending  ?? pb.bendingCostPerPart;
+                      const setupCost    = pb.overrides.setup    ?? pb.setupCostPerPart;
+                      const markup       = pb.overrides.markup   ?? activeItem.markup;
+                      const net = matCost + cuttingCost + bendingCost + setupCost;
+                      const unitPrice = net * (1 + markup / 100);
+
+                      return (
+                        <tr key={i}>
+                          <td>
+                            <input type="number" className="tier-editable-input" value={pb.quantity} onChange={(e) => updateActiveItem({
+                              priceBreaks: activeItem.priceBreaks.map((p, idx) => idx === i ? { ...p, quantity: Math.max(1, +e.target.value) } : p)
+                            })} style={{ textAlign: "left", width: 60, paddingLeft: 8 }} />
+                          </td>
+                          <td className={`tier-val-auto${sheetCost != null ? " tier-val-nesting" : ""}`}>{formatCurrency(matCost)}</td>
+                          <td className="tier-val-auto">{formatCurrency(cuttingCost)}</td>
+                          <td className="tier-val-auto">{formatCurrency(bendingCost)}</td>
+                          <td className="tier-val-auto">{formatCurrency(setupCost)}</td>
+                          {tierNestingResults.length > 0 && (
+                            <>
+                              <td className="tier-table-nesting-col" style={{ textAlign: "right" }}>{nestSheets ?? "—"}</td>
+                              <td className="tier-table-nesting-col" style={{ textAlign: "right" }}>{nestUtil != null ? `${nestUtil}%` : "—"}</td>
+                            </>
+                          )}
+                          <td style={{ width: 90 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>
+                              <input
+                                className={`tier-editable-input ${pb.overrides.markup !== null ? "overridden" : ""}`}
+                                value={pb.overrides.markup ?? activeItem.markup}
+                                onChange={(e) => updateOverride(i, "markup", e.target.value)}
+                                style={{ textAlign: "right", width: 36, padding: 0, flex: "0 0 auto" }}
+                              />
+                              <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>%</span>
+                            </div>
+                          </td>
+                          <td style={{ textAlign: "left" }}>
+                            <input className="tier-editable-input" value={pb.leadTime ?? ""} onChange={(e) => updateTierLeadTime(i, e.target.value)} style={{ textAlign: "left", padding: 0 }} />
+                          </td>
+                          <td className="tier-val-highlight">{formatCurrency(unitPrice)}</td>
+                          <td><button className="btn-tier-remove" onClick={() => removeTier(i)}>×</button></td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
 
