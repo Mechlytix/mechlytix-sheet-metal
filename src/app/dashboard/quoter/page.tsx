@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -10,16 +10,16 @@ import { getFeedRateWithCustom } from "@/lib/pricing/feed-rates";
 import { nestParts } from "@/lib/pricing/nest-engine";
 import type { NestingPart, NestingSheet, AvailableRemnant } from "@/lib/pricing/nest-engine";
 import { formatCurrency, formatLength } from "@/lib/units";
-import type { PricingGeometry, PricingResult, DXFIntent, PriceBreak, TierNestingResult, NestingMode, FileNestingResult } from "@/lib/pricing/types";
+import type { PricingGeometry, PricingResult, DXFIntent, PriceBreak, TierNestingResult, NestingMode, NestingAlgorithm, NestingSortOrder, FileNestingResult } from "@/lib/pricing/types";
 import type { Material, MachineProfile, SheetSize } from "@/lib/types/database";
 import { DxfViewer } from "@/components/DxfViewer";
 import { NestingPreview } from "@/components/NestingPreview";
 import { CustomerSelector } from "@/components/CustomerSelector";
 import type { CustomerSelection } from "@/components/CustomerSelector";
 
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // /dashboard/quoter  -  Unified STEP / DXF Instant Quoter (Multi-Part)
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface RemnantMatch {
   id: string;
@@ -56,7 +56,7 @@ interface QuoteItem {
   priceBreaks: PriceBreak[];
 }
 
-// ─── File Drop Zone ──────────────────────────────────────────
+// â”€â”€â”€ File Drop Zone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function DropZone({
   onFiles,
@@ -122,7 +122,7 @@ function DropZone({
   );
 }
 
-// ─── Geometry Card ──────────────────────────────────────────
+// â”€â”€â”€ Geometry Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function GeometryCard({ geo, units }: { geo: PricingGeometry; units: string }) {
   const u = units as "metric" | "imperial";
@@ -146,7 +146,7 @@ function GeometryCard({ geo, units }: { geo: PricingGeometry; units: string }) {
         <div className="geo-item">
           <span className="geo-label">Bends</span>
           <span className="geo-value">
-            {geo.bendCount > 0 ? geo.bendCount : "—"}
+            {geo.bendCount > 0 ? geo.bendCount : "â€”"}
           </span>
         </div>
         {geo.thickness > 0 && (
@@ -162,7 +162,7 @@ function GeometryCard({ geo, units }: { geo: PricingGeometry; units: string }) {
   );
 }
 
-// ─── Quote Breakdown Card ─────────────────────────────────────
+// â”€â”€â”€ Quote Breakdown Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function QuoteBreakdown({
   result,
@@ -249,14 +249,14 @@ function QuoteBreakdown({
           disabled={saving || !canSave}
           style={{ width: "100%" }}
         >
-          {saving ? "Saving..." : !canSave ? "Select Customer to Save" : "💾 Save Quote"}
+          {saving ? "Saving..." : !canSave ? "Select Customer to Save" : "ðŸ’¾ Save Quote"}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Main Quoter Page ────────────────────────────────────────
+// â”€â”€â”€ Main Quoter Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function QuoterPage() {
   const router = useRouter();
@@ -276,16 +276,21 @@ export default function QuoterPage() {
 
   const [result, setResult] = useState<PricingResult | null>(null);
 
-  // ── Nesting state ──
+  // â”€â”€ Nesting state â”€â”€
   const [viewerTab, setViewerTab] = useState<"part" | "nesting">("part");
+  const [rightTab, setRightTab] = useState<"part" | "nesting">("part");
   const [sheetSizes, setSheetSizes] = useState<SheetSize[]>([]);
   const [selectedSheetId, setSelectedSheetId] = useState<string>("");
   const [tierNestingResults, setTierNestingResults] = useState<TierNestingResult[]>([]);
   const [selectedNestTierQty, setSelectedNestTierQty] = useState<number | null>(null);
   const [nestingMode, setNestingMode] = useState<NestingMode>("combined");
+  const [nestingAlgorithm, setNestingAlgorithm] = useState<NestingAlgorithm>("shelf");
+  const [nestingSortOrder, setNestingSortOrder] = useState<NestingSortOrder>("height");
   const [allowRotation, setAllowRotation] = useState(true);
   const [grainLocked, setGrainLocked] = useState(false);
   const [remnants, setRemnants] = useState<AvailableRemnant[]>([]);
+  const [saveSelection, setSaveSelection] = useState<CustomerSelection | null>(null);
+  const [saveNotes, setSaveNotes] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -411,7 +416,7 @@ export default function QuoterPage() {
 
   }, [phase.name, activeItem, effectiveGeometry, materials, machines, updateActiveItem]);
 
-  // ── Nesting computation (reactive) ──
+  // â”€â”€ Nesting computation (reactive) â”€â”€
   const kerfGapMm = useMemo(() => {
     if (!activeItem) return 5;
     const mach = machines.find(m => m.id === activeItem.machineId);
@@ -440,7 +445,7 @@ export default function QuoterPage() {
     }
   }, [filteredSheetSizes, selectedSheetId]);
 
-  // ── Compute nesting for ALL tiers ──
+  // â”€â”€ Compute nesting for ALL tiers â”€â”€
   useEffect(() => {
     if (!activeItem || items.length === 0 || (phase.name !== "ready" && phase.name !== "saving")) {
       setTierNestingResults([]);
@@ -466,7 +471,7 @@ export default function QuoterPage() {
       return thick <= 0 || Math.abs(r.thickness - thick) < 0.5;
     });
 
-    const config = { kerfGapMm: localKerfGap, allowRotation, grainLocked };
+    const config = { kerfGapMm: localKerfGap, allowRotation, grainLocked, algorithm: nestingAlgorithm, sortOrder: nestingSortOrder };
     const baseQty = activeItem.quantity;
 
     // All tier quantities: base + every price break
@@ -537,7 +542,7 @@ export default function QuoterPage() {
       if (prev !== null && validQtys.includes(prev)) return prev;
       return baseQty;
     });
-  }, [items, activeItem, selectedSheetId, filteredSheetSizes, localKerfGap, allowRotation, grainLocked, remnants, phase.name, nestingMode]);
+  }, [items, activeItem, selectedSheetId, filteredSheetSizes, localKerfGap, allowRotation, grainLocked, remnants, phase.name, nestingMode, nestingAlgorithm, nestingSortOrder]);
 
   const onFiles = useCallback(async (files: File[]) => {
     setPhase({ name: "analyzing", filenames: files.map(f => f.name) });
@@ -702,7 +707,7 @@ export default function QuoterPage() {
     return (
       <div className="dash-page">
         <div className="quote-saved-banner">
-          <span className="qs-icon">✓</span>
+          <span className="qs-icon">âœ“</span>
           <div><h2>Batch Quote Saved</h2><p>All items have been linked and saved to your history.</p></div>
           <div className="qs-actions">
             <a href={`/dashboard/quotes/${phase.quoteId}`} className="btn-primary">View Quote History {"\u2192"}</a>
@@ -714,34 +719,27 @@ export default function QuoterPage() {
   }
 
   return (
-    <div className="dash-page">
-      <div className="dash-page-header">
-        <div><h1 className="dash-page-title">Instant Quoter</h1><p className="dash-page-subtitle">Configure multi-part batches with volume pricing</p></div>
-        {items.length > 0 && phase.name === "idle" && (
-          <button className="btn-ghost" onClick={() => setPhase({ name: "ready" })}>{"\u2190"} Back to Config</button>
-        )}
-      </div>
+    <div className="quoter-workspace">
 
+      {/* â•â• Drop Zone overlay (idle / analyzing) â•â• */}
       {(phase.name === "idle" || phase.name === "analyzing") && (
-        <DropZone onFiles={onFiles} busy={phase.name === "analyzing"} />
+        <div className="quoter-dropzone-overlay">
+          <DropZone onFiles={onFiles} busy={phase.name === "analyzing"} />
+        </div>
       )}
 
-      {(phase.name === "ready" || phase.name === "saving") && activeItem && (
-        <div className="quoter-layout quoter-two-col">
-
-          {/* ══ Main column ══ */}
-          <div className="quoter-left">
-
-            {/* Horizontal part tabs */}
+      {/* â•â• TOOLBAR â•â• */}
+      <div className="quoter-toolbar">
+        <div className="quoter-toolbar-left">
+          <span className="quoter-brand">Instant Quoter</span>
+          {(phase.name === "ready" || phase.name === "saving") && activeItem && (
             <div className="part-tabs-bar">
               {items.map((item, idx) => (
-                <button
-                  key={item.id}
+                <button key={item.id}
                   className={`part-tab ${activeIndex === idx ? "active" : ""}`}
-                  onClick={() => setActiveIndex(idx)}
-                >
-                  <span className="part-tab-name">{item.filename}</span>
-                  <span className="part-tab-meta">Qty {item.quantity}</span>
+                  onClick={() => setActiveIndex(idx)}>
+                  <span className="part-tab-name">{item.filename.replace(/\.[^.]+$/, "")}</span>
+                  <span className="part-tab-meta">Ã—{item.quantity}</span>
                   {items.length > 1 && (
                     <span className="part-tab-close" onClick={(e) => {
                       e.stopPropagation();
@@ -750,384 +748,409 @@ export default function QuoterPage() {
                         setActiveIndex(Math.min(activeIndex, next.length - 1));
                         return next;
                       });
-                    }}>×</span>
+                    }}>Ã—</span>
                   )}
                 </button>
               ))}
-              <button className="part-tab-add" onClick={() => setPhase({ name: "idle" })}>
-                + Add Part
-              </button>
+              <button className="part-tab-add" onClick={() => setPhase({ name: "idle" })}>+ Add Part</button>
+            </div>
+          )}
+        </div>
+        <div className="quoter-toolbar-right">
+          {result && <span className="quoter-unit-badge">{formatCurrency(result.unitPrice)} / part</span>}
+          <button
+            className={`btn-primary quoter-save-btn ${phase.name === "saving" ? "loading" : ""}`}
+            disabled={phase.name === "saving" || !saveSelection || !result}
+            onClick={() => saveSelection && handleSave(saveSelection.contactId, saveSelection.companyId, saveNotes)}
+          >
+            {phase.name === "saving" ? "Savingâ€¦" : "ðŸ’¾ Save Quote"}
+          </button>
+        </div>
+      </div>
+
+      {/* â•â• MAIN WORKSPACE â•â• */}
+      {(phase.name === "ready" || phase.name === "saving") && activeItem && (
+        <>
+          <div className="quoter-body">
+
+            {/* â”€â”€ LEFT RAIL â”€â”€ */}
+            <div className="quoter-left-rail">
+              {effectiveGeometry && <GeometryCard geo={effectiveGeometry} units={units} />}
+
+              {/* DXF Layers */}
+              {activeItem.geometry.inputType === "dxf" && activeItem.geometry.dxfData && (
+                <div className="dxf-layers-panel">
+                  <p className="dxf-layers-title">DXF Layers</p>
+                  <p className="dxf-layers-hint">Click lines in viewer or assign below</p>
+                  <div className="dxf-layers-list">
+                    {activeItem.geometry.dxfData.layers.map(layer => {
+                      const currentIntent = activeItem.layerIntents[layer.name] || "cut";
+                      return (
+                        <div key={layer.name} className="dxf-layer-row">
+                          <div className="dxf-layer-info">
+                            <div className="dxf-layer-dot" style={{ background: layer.color }} />
+                            <span className="dxf-layer-name">{layer.name}</span>
+                            <span className="dxf-layer-count">({layer.entityCount})</span>
+                          </div>
+                          <div className="layer-intent-toggle">
+                            {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
+                              <button key={intent}
+                                className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
+                                onClick={() => updateActiveItem({ layerIntents: { ...activeItem.layerIntents, [layer.name]: intent } })}>
+                                {intent}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Viewer + side config split */}
-            <div className={`viewer-split ${viewerTab === "nesting" ? "is-nesting" : ""}`}>
-              {/* Viewer area with tab toggle */}
-              <div className={`viewer-split-viewer ${viewerTab === "nesting" ? "is-nesting" : ""}`}>
-                {/* Tab Toggle: Part View / Nesting */}
-                <div className="viewer-tab-toggle">
-                  <button
-                    className={`viewer-tab-btn ${viewerTab === "part" ? "active" : ""}`}
-                    onClick={() => setViewerTab("part")}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    Part View
-                  </button>
-                  <button
-                    className={`viewer-tab-btn ${viewerTab === "nesting" ? "active" : ""}`}
-                    onClick={() => setViewerTab("nesting")}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
-                    Nesting
-                    {tierNestingResults.length > 0 && (() => {
-                      const base = tierNestingResults.find(t => t.isBase);
-                      const util = nestingMode === "combined"
-                        ? base?.combined?.overallUtilisation
-                        : undefined;
-                      return util != null ? (
-                        <span style={{ fontSize: 10, opacity: 0.8 }}>{util}%</span>
-                      ) : null;
-                    })()}
-                  </button>
-                </div>
-
-                {viewerTab === "part" ? (
-                  <DxfViewer
-                    geometry={activeItem.geometry}
-                    layerIntents={activeItem.layerIntents}
-                    pathIntents={activeItem.pathIntents}
-                    onPathIntentChange={(pid, newIntent) => {
-                      updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: newIntent } });
-                    }}
-                  />
-                ) : (
-                  <NestingPreview
-                    tierResults={tierNestingResults}
-                    selectedTierQty={selectedNestTierQty}
-                    onTierChange={setSelectedNestTierQty}
-                    nestingMode={nestingMode}
-                    onNestingModeChange={setNestingMode}
-                    kerfGapMm={localKerfGap}
-                    allowRotation={allowRotation}
-                    grainLocked={grainLocked}
-                    onKerfChange={setLocalKerfGap}
-                    onRotationToggle={() => setAllowRotation(prev => !prev)}
-                    onGrainLockToggle={() => {
-                      setGrainLocked(prev => {
-                        if (!prev) setAllowRotation(false);
-                        return !prev;
-                      });
-                    }}
-                  />
-                )}
+            {/* â”€â”€ CENTRE CANVAS â”€â”€ */}
+            <div className="quoter-centre">
+              {/* Floating view toggle pill */}
+              <div className="quoter-view-pill">
+                <button className={`qvp-btn ${viewerTab === "part" ? "active" : ""}`}
+                  onClick={() => { setViewerTab("part"); setRightTab("part"); }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  Part
+                </button>
+                <button className={`qvp-btn ${viewerTab === "nesting" ? "active" : ""}`}
+                  onClick={() => { setViewerTab("nesting"); setRightTab("nesting"); }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/>
+                  </svg>
+                  Nesting
+                  {tierNestingResults.length > 0 && nestingMode === "combined" && (() => {
+                    const util = tierNestingResults.find(t => t.isBase)?.combined?.overallUtilisation;
+                    return util != null ? <span className="qvp-util">{util}%</span> : null;
+                  })()}
+                </button>
               </div>
 
-              {/* Side panel: geo + layers + config */}
-              <div className="viewer-split-panel">
-                {effectiveGeometry && <GeometryCard geo={effectiveGeometry} units={units} />}
+              {viewerTab === "part" ? (
+                <DxfViewer
+                  geometry={activeItem.geometry}
+                  layerIntents={activeItem.layerIntents}
+                  pathIntents={activeItem.pathIntents}
+                  onPathIntentChange={(pid, intent) =>
+                    updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: intent } })
+                  }
+                />
+              ) : (
+                <NestingPreview
+                  tierResults={tierNestingResults}
+                  selectedTierQty={selectedNestTierQty}
+                  nestingMode={nestingMode}
+                />
+              )}
+            </div>
 
-                {/* DXF Layer Intent Mapper */}
-                {viewerTab === "part" && activeItem.geometry.inputType === "dxf" && activeItem.geometry.dxfData && (
-                  <div className="dxf-layers-panel">
-                    <p className="dxf-layers-title">DXF Layers</p>
-                    <p className="dxf-layers-hint">Click lines in viewer or assign below</p>
-                    <div className="dxf-layers-list">
-                      {activeItem.geometry.dxfData.layers.map(layer => {
-                        const currentIntent = activeItem.layerIntents[layer.name] || "cut";
-                        return (
-                          <div key={layer.name} className="dxf-layer-row">
-                            <div className="dxf-layer-info">
-                              <div className="dxf-layer-dot" style={{ background: layer.color }} />
-                              <span className="dxf-layer-name">{layer.name}</span>
-                              <span className="dxf-layer-count">({layer.entityCount})</span>
-                            </div>
-                            <div className="layer-intent-toggle">
-                              {(["cut", "bend", "ignore"] as DXFIntent[]).map(intent => (
-                                <button key={intent}
-                                  className={`layer-intent-btn ${currentIntent === intent ? "active" : ""} layer-intent-btn--${intent}`}
-                                  onClick={() => updateActiveItem({ layerIntents: { ...activeItem.layerIntents, [layer.name]: intent } })}
-                                >{intent}</button>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+            {/* â”€â”€ RIGHT DRAWER â”€â”€ */}
+            <div className="quoter-right-drawer">
+              {/* Sub-tabs */}
+              <div className="qrd-tabs">
+                <button className={`qrd-tab ${rightTab === "part" ? "active" : ""}`}
+                  onClick={() => setRightTab("part")}>Part</button>
+                <button className={`qrd-tab ${rightTab === "nesting" ? "active" : ""}`}
+                  onClick={() => { setRightTab("nesting"); setViewerTab("nesting"); }}>Nesting</button>
+              </div>
 
-                {/* Nesting tab: mode toggle + tier selector + sheet selector */}
-                {viewerTab === "nesting" && (
-                  <>
-                    {/* Mode toggle */}
-                    <div className="nest-side-section">
-                      <p className="dxf-layers-title">Nesting Mode</p>
-                      <div className="nest-mode-toggle">
-                        <button
-                          className={`nest-mode-btn ${nestingMode === "combined" ? "active" : ""}`}
-                          onClick={() => setNestingMode("combined")}
-                          title="All files share sheets"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="2" y="3" width="9" height="9" rx="1"/><rect x="13" y="3" width="9" height="9" rx="1"/>
-                            <rect x="7" y="14" width="10" height="7" rx="1"/>
-                          </svg>
-                          Combined
-                        </button>
-                        <button
-                          className={`nest-mode-btn ${nestingMode === "individual" ? "active" : ""}`}
-                          onClick={() => setNestingMode("individual")}
-                          title="Each file gets its own sheets"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/>
-                          </svg>
-                          Individual
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Tier selector */}
-                    {tierNestingResults.length > 0 && (
-                      <div className="nest-side-section">
-                        <p className="dxf-layers-title">Quantity Tier</p>
-                        <div className="nest-tier-selector">
-                          {tierNestingResults.map(t => {
-                            const sheets = nestingMode === "combined"
-                              ? t.combined?.totalSheets
-                              : t.perFile?.reduce((s, f) => s + f.result.totalSheets, 0);
-                            return (
-                              <button
-                                key={t.quantity}
-                                className={`nest-tier-btn ${selectedNestTierQty === t.quantity ? "active" : ""}`}
-                                onClick={() => setSelectedNestTierQty(t.quantity)}
-                              >
-                                <span className="nest-tier-btn-qty">
-                                  {t.quantity} pc{t.quantity !== 1 ? "s" : ""}
-                                  {t.isBase && <span className="nest-tier-btn-base">&nbsp;Base</span>}
-                                </span>
-                                {sheets != null && (
-                                  <span className="nest-tier-btn-sheets">{sheets} sheet{sheets !== 1 ? "s" : ""}</span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Sheet size selector */}
-                    <div className="nest-side-section">
-                      <p className="dxf-layers-title">Sheet Size</p>
-                      {filteredSheetSizes.length > 0 ? (
-                        <select
-                          className="nest-sheet-select"
-                          value={selectedSheetId}
-                          onChange={(e) => setSelectedSheetId(e.target.value)}
-                        >
-                          {filteredSheetSizes.map(s => (
-                            <option key={s.id} value={s.id}>
-                              {s.width_mm} × {s.height_mm}mm
-                              {s.thickness_mm ? ` (${s.thickness_mm}mm)` : ""}
-                              {s.cost_per_sheet ? ` — £${s.cost_per_sheet}` : ""}
-                              {s.in_stock === false ? " (out of stock)" : ""}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <p style={{ fontSize: 11, color: "var(--text-dim)", margin: 0 }}>
-                          No sheet sizes for this material/thickness.<br />
-                          <a href="/dashboard/materials" style={{ color: "var(--accent-primary)", fontSize: 11 }}>Add sheet sizes →</a>
-                        </p>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {/* Configuration */}
-                <div className="side-config-fields">
-                  <p className="dxf-layers-title">Configuration</p>
+              {/* PART sub-tab */}
+              {rightTab === "part" && (
+                <div className="qrd-content">
                   <div className="form-field">
                     <label>Material</label>
-                    <select value={activeItem.materialId} onChange={(e) => updateActiveItem({ materialId: e.target.value })}>
+                    <select value={activeItem.materialId} onChange={e => updateActiveItem({ materialId: e.target.value })}>
                       {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.grade})</option>)}
                     </select>
                   </div>
                   <div className="form-field">
                     <label>Machine</label>
-                    <select value={activeItem.machineId} onChange={(e) => updateActiveItem({ machineId: e.target.value })}>
+                    <select value={activeItem.machineId} onChange={e => updateActiveItem({ machineId: e.target.value })}>
                       {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                   </div>
                   <div className="side-config-row">
                     <div className="form-field">
                       <label>Qty</label>
-                      <input type="number" value={activeItem.quantity} onChange={(e) => updateActiveItem({ quantity: Math.max(1, +e.target.value) })} />
+                      <input type="number" value={activeItem.quantity}
+                        onChange={e => updateActiveItem({ quantity: Math.max(1, +e.target.value) })} />
                     </div>
                     <div className="form-field">
                       <label>Markup %</label>
-                      <input type="number" value={activeItem.markup} onChange={(e) => updateActiveItem({ markup: Math.max(0, +e.target.value) })} />
+                      <input type="number" value={activeItem.markup}
+                        onChange={e => updateActiveItem({ markup: Math.max(0, +e.target.value) })} />
                     </div>
                   </div>
                   <div className="form-field">
                     <label>Lead Time</label>
-                    <input type="text" value={activeItem.leadTime} onChange={(e) => updateActiveItem({ leadTime: e.target.value })} />
+                    <input type="text" value={activeItem.leadTime}
+                      onChange={e => updateActiveItem({ leadTime: e.target.value })} />
+                  </div>
+
+                  {result && (
+                    <div className="qrd-cost-summary">
+                      <div className="qrd-cost-row"><span>Material</span><span>{formatCurrency(result.materialCostPerPart)}</span></div>
+                      <div className="qrd-cost-row"><span>Cutting</span><span>{formatCurrency(result.cuttingCostPerPart)}</span></div>
+                      <div className="qrd-cost-row"><span>Bending</span><span>{formatCurrency(result.bendingCostPerPart)}</span></div>
+                      <div className="qrd-cost-row"><span>Setup / part</span><span>{formatCurrency(result.setupCostPerPart)}</span></div>
+                      <div className="qrd-cost-row net"><span>Net</span><span>{formatCurrency(result.netCostPerPart)}</span></div>
+                      <div className="qrd-cost-row unit"><span>Unit Price</span><strong>{formatCurrency(result.unitPrice)}</strong></div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* NESTING sub-tab */}
+              {rightTab === "nesting" && (
+                <div className="qrd-content">
+                  {/* Algorithm */}
+                  <div className="qrd-section">
+                    <p className="qrd-section-label">Algorithm</p>
+                    <div className="qrd-seg">
+                      {([["shelf", "Shelf"], ["guillotine", "Guillotine"], ["strip", "Strip"]] as const).map(([val, label]) => (
+                        <button key={val}
+                          className={`qrd-seg-btn ${nestingAlgorithm === val ? "active" : ""}`}
+                          onClick={() => setNestingAlgorithm(val)}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Sort Order */}
+                  <div className="qrd-section">
+                    <p className="qrd-section-label">Sort Order</p>
+                    <div className="qrd-seg">
+                      {([["height", "Heightâ†“"], ["area", "Areaâ†“"], ["width", "Widthâ†“"]] as const).map(([val, label]) => (
+                        <button key={val}
+                          className={`qrd-seg-btn ${nestingSortOrder === val ? "active" : ""}`}
+                          onClick={() => setNestingSortOrder(val)}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Nesting Mode */}
+                  <div className="qrd-section">
+                    <p className="qrd-section-label">Mode</p>
+                    <div className="qrd-seg">
+                      <button className={`qrd-seg-btn ${nestingMode === "combined" ? "active" : ""}`}
+                        onClick={() => setNestingMode("combined")}>Combined</button>
+                      <button className={`qrd-seg-btn ${nestingMode === "individual" ? "active" : ""}`}
+                        onClick={() => setNestingMode("individual")}>Individual</button>
+                    </div>
+                  </div>
+
+                  {/* Kerf / Rotation / Grain */}
+                  <div className="qrd-section">
+                    <p className="qrd-section-label">Options</p>
+                    <div className="form-field">
+                      <label>Kerf Gap (mm)</label>
+                      <input type="number" value={localKerfGap} step={0.5} min={0} max={20}
+                        onChange={e => setLocalKerfGap(Math.max(0, parseFloat(e.target.value) || 0))} />
+                    </div>
+                    <div className="qrd-toggles">
+                      <button className={`nest-toggle-btn ${allowRotation ? "active" : ""}`}
+                        onClick={() => setAllowRotation(p => !p)}>
+                        Rotation
+                      </button>
+                      <button className={`nest-toggle-btn ${grainLocked ? "active warn" : ""}`}
+                        onClick={() => setGrainLocked(p => { if (!p) setAllowRotation(false); return !p; })}>
+                        Grain Lock
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tier selector */}
+                  {tierNestingResults.length > 0 && (
+                    <div className="qrd-section">
+                      <p className="qrd-section-label">Preview Tier</p>
+                      <div className="nest-tier-selector">
+                        {tierNestingResults.map(t => {
+                          const sheets = nestingMode === "combined"
+                            ? t.combined?.totalSheets
+                            : t.perFile?.reduce((s, f) => s + f.result.totalSheets, 0);
+                          return (
+                            <button key={t.quantity}
+                              className={`nest-tier-btn ${selectedNestTierQty === t.quantity ? "active" : ""}`}
+                              onClick={() => setSelectedNestTierQty(t.quantity)}>
+                              <span className="nest-tier-btn-qty">
+                                {t.quantity} pc{t.quantity !== 1 ? "s" : ""}
+                                {t.isBase && <span className="nest-tier-btn-base">&nbsp;Base</span>}
+                              </span>
+                              {sheets != null && (
+                                <span className="nest-tier-btn-sheets">{sheets} sh</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sheet Size */}
+                  <div className="qrd-section">
+                    <p className="qrd-section-label">Sheet Size</p>
+                    {filteredSheetSizes.length > 0 ? (
+                      <select className="nest-sheet-select" value={selectedSheetId}
+                        onChange={e => setSelectedSheetId(e.target.value)}>
+                        {filteredSheetSizes.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.width_mm} Ã— {s.height_mm}mm
+                            {s.thickness_mm ? ` (${s.thickness_mm}mm)` : ""}
+                            {s.cost_per_sheet ? ` â€” Â£${s.cost_per_sheet}` : ""}
+                            {s.in_stock === false ? " (out of stock)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="qrd-empty-hint">
+                        No sheet sizes for this material/thickness.{" "}
+                        <a href="/dashboard/materials">Add sheet sizes â†’</a>
+                      </p>
+                    )}
                   </div>
                 </div>
-              </div>
+              )}
             </div>
+          </div>
 
-            {/* Tier Table — full width below the split */}
-            <div className="config-panel" style={{ marginTop: "1rem" }}>
-              <h3 className="config-title">Quantity Tiers &amp; Price Breaks</h3>
-              <div className="tier-manager">
-                <table className="quoter-tier-table">
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: "left", width: 90 }}>QTY</th>
-                      <th style={{ textAlign: "right", width: 80 }}>MATERIAL</th>
-                      <th style={{ textAlign: "right", width: 80 }}>CUTTING</th>
-                      <th style={{ textAlign: "right", width: 80 }}>BENDING</th>
-                      <th style={{ textAlign: "right", width: 80 }}>SETUP</th>
-                      {tierNestingResults.length > 0 && (
-                        <>
-                          <th className="tier-table-nesting-col" style={{ textAlign: "right", width: 60 }}>SHEETS</th>
-                          <th className="tier-table-nesting-col" style={{ textAlign: "right", width: 60 }}>UTIL %</th>
-                        </>
-                      )}
-                      <th style={{ textAlign: "right", width: 90 }}>MARKUP %</th>
-                      <th style={{ textAlign: "left", width: 120 }}>LEAD TIME</th>
-                      <th style={{ textAlign: "right", width: 90 }}>UNIT PRICE</th>
-                      <th style={{ width: 36 }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style={{ fontWeight: 600 }}>{activeItem.quantity} <small>(Base)</small></td>
-                      {(() => {
-                        // Use sheet cost for material if available
-                        const baseNest = tierNestingResults.find(t => t.isBase);
-                        const sheetCost = nestingMode === "combined"
-                          ? baseNest?.combined?.totalMaterialCost
-                          : baseNest?.perFile?.reduce((s, f) => s + (f.result.totalMaterialCost ?? 0), 0);
-                        const matCost = sheetCost != null
-                          ? sheetCost / activeItem.quantity
-                          : (result?.materialCostPerPart ?? 0);
-                        const baseSheets = nestingMode === "combined"
-                          ? baseNest?.combined?.totalSheets
-                          : baseNest?.perFile?.reduce((s, f) => s + f.result.totalSheets, 0);
-                        const baseUtil = nestingMode === "combined"
-                          ? baseNest?.combined?.overallUtilisation
-                          : undefined;
-                        const cuttingCost = result?.cuttingCostPerPart ?? 0;
-                        const bendingCost = result?.bendingCostPerPart ?? 0;
-                        const setupCost = result?.setupCostPerPart ?? 0;
-                        const net = matCost + cuttingCost + bendingCost + setupCost;
-                        const unitPrice = net * (1 + activeItem.markup / 100);
-                        return (
-                          <>
-                            <td className="tier-val-auto">{formatCurrency(matCost)}</td>
-                            <td className="tier-val-auto">{formatCurrency(cuttingCost)}</td>
-                            <td className="tier-val-auto">{formatCurrency(bendingCost)}</td>
-                            <td className="tier-val-auto">{formatCurrency(setupCost)}</td>
-                            {tierNestingResults.length > 0 && (
-                              <>
-                                <td className="tier-table-nesting-col" style={{ textAlign: "right" }}>{baseSheets ?? "—"}</td>
-                                <td className="tier-table-nesting-col" style={{ textAlign: "right" }}>{baseUtil != null ? `${baseUtil}%` : "—"}</td>
-                              </>
-                            )}
-                            <td className="tier-val-auto">{activeItem.markup} <span style={{ fontSize: 10, color: "var(--text-dim)" }}>%</span></td>
-                            <td className="tier-val-auto" style={{ textAlign: "left" }}>{activeItem.leadTime}</td>
-                            <td className="tier-val-highlight">{formatCurrency(sheetCost != null ? unitPrice : (result?.unitPrice ?? 0))}</td>
-                            <td></td>
-                          </>
-                        );
-                      })()}
-                    </tr>
-                    {activeItem.priceBreaks.map((pb, i) => {
-                      const pbNest = tierNestingResults.find(t => t.quantity === pb.quantity);
+          {/* â•â• BOTTOM STRIP â€” Tier table â•â• */}
+          <div className="quoter-bottom-strip">
+            <div className="qbs-table-wrap">
+              <table className="quoter-tier-table">
+                <thead>
+                  <tr>
+                    <th className="qbs-th-qty">QTY</th>
+                    <th>MATERIAL</th>
+                    <th>CUTTING</th>
+                    <th>BENDING</th>
+                    <th>SETUP</th>
+                    {tierNestingResults.length > 0 && <>
+                      <th className="tier-table-nesting-col">SHEETS</th>
+                      <th className="tier-table-nesting-col">UTIL%</th>
+                    </>}
+                    <th>MARKUP%</th>
+                    <th>LEAD TIME</th>
+                    <th>UNIT PRICE</th>
+                    <th style={{ width: 32 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Base row */}
+                  <tr>
+                    <td className="qbs-qty-cell">{activeItem.quantity} <small>Base</small></td>
+                    {(() => {
+                      const baseNest = tierNestingResults.find(t => t.isBase);
                       const sheetCost = nestingMode === "combined"
-                        ? pbNest?.combined?.totalMaterialCost
-                        : pbNest?.perFile?.reduce((s, f) => s + (f.result.totalMaterialCost ?? 0), 0);
-                      const nestSheets = nestingMode === "combined"
-                        ? pbNest?.combined?.totalSheets
-                        : pbNest?.perFile?.reduce((s, f) => s + f.result.totalSheets, 0);
-                      const nestUtil = nestingMode === "combined"
-                        ? pbNest?.combined?.overallUtilisation
-                        : undefined;
+                        ? baseNest?.combined?.totalMaterialCost
+                        : baseNest?.perFile?.reduce((s, f) => s + (f.result.totalMaterialCost ?? 0), 0);
+                      const matCost = sheetCost != null ? sheetCost / activeItem.quantity : (result?.materialCostPerPart ?? 0);
+                      const cut = result?.cuttingCostPerPart ?? 0;
+                      const bend = result?.bendingCostPerPart ?? 0;
+                      const setup = result?.setupCostPerPart ?? 0;
+                      const unitPrice = sheetCost != null
+                        ? (matCost + cut + bend + setup) * (1 + activeItem.markup / 100)
+                        : (result?.unitPrice ?? 0);
+                      return (<>
+                        <td className={`tier-val-auto${sheetCost != null ? " tier-val-nesting" : ""}`}>{formatCurrency(matCost)}</td>
+                        <td className="tier-val-auto">{formatCurrency(cut)}</td>
+                        <td className="tier-val-auto">{formatCurrency(bend)}</td>
+                        <td className="tier-val-auto">{formatCurrency(setup)}</td>
+                        {tierNestingResults.length > 0 && <>
+                          <td className="tier-table-nesting-col">{baseNest?.[nestingMode === "combined" ? "combined" : "combined"]?.totalSheets ?? baseNest?.perFile?.reduce((s,f)=>s+f.result.totalSheets,0) ?? "â€”"}</td>
+                          <td className="tier-table-nesting-col">{nestingMode === "combined" ? (baseNest?.combined?.overallUtilisation != null ? `${baseNest.combined.overallUtilisation}%` : "â€”") : "â€”"}</td>
+                        </>}
+                        <td className="tier-val-auto">{activeItem.markup}%</td>
+                        <td className="tier-val-auto" style={{ textAlign: "left" }}>{activeItem.leadTime}</td>
+                        <td className="tier-val-highlight">{formatCurrency(unitPrice)}</td>
+                        <td></td>
+                      </>);
+                    })()}
+                  </tr>
+                  {/* Price break rows */}
+                  {activeItem.priceBreaks.map((pb, i) => {
+                    const pbNest = tierNestingResults.find(t => t.quantity === pb.quantity);
+                    const sheetCost = nestingMode === "combined"
+                      ? pbNest?.combined?.totalMaterialCost
+                      : pbNest?.perFile?.reduce((s, f) => s + (f.result.totalMaterialCost ?? 0), 0);
+                    const matCost = sheetCost != null ? sheetCost / pb.quantity : (pb.overrides.material ?? pb.materialCostPerPart);
+                    const cut = pb.overrides.cutting ?? pb.cuttingCostPerPart;
+                    const bend = pb.overrides.bending ?? pb.bendingCostPerPart;
+                    const setup = pb.overrides.setup ?? pb.setupCostPerPart;
+                    const markup = pb.overrides.markup ?? activeItem.markup;
+                    const unitPrice = (matCost + cut + bend + setup) * (1 + markup / 100);
+                    const nestSheets = nestingMode === "combined" ? pbNest?.combined?.totalSheets : pbNest?.perFile?.reduce((s,f)=>s+f.result.totalSheets,0);
+                    const nestUtil = nestingMode === "combined" ? pbNest?.combined?.overallUtilisation : undefined;
+                    return (
+                      <tr key={i}>
+                        <td>
+                          <input type="number" className="tier-editable-input qbs-qty-input" value={pb.quantity}
+                            onChange={e => updateActiveItem({ priceBreaks: activeItem.priceBreaks.map((p, idx) => idx === i ? { ...p, quantity: Math.max(1, +e.target.value) } : p) })} />
+                        </td>
+                        <td className={`tier-val-auto${sheetCost != null ? " tier-val-nesting" : ""}`}>{formatCurrency(matCost)}</td>
+                        <td className="tier-val-auto">{formatCurrency(cut)}</td>
+                        <td className="tier-val-auto">{formatCurrency(bend)}</td>
+                        <td className="tier-val-auto">{formatCurrency(setup)}</td>
+                        {tierNestingResults.length > 0 && <>
+                          <td className="tier-table-nesting-col">{nestSheets ?? "â€”"}</td>
+                          <td className="tier-table-nesting-col">{nestUtil != null ? `${nestUtil}%` : "â€”"}</td>
+                        </>}
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                            <input className={`tier-editable-input ${pb.overrides.markup !== null ? "overridden" : ""}`}
+                              value={pb.overrides.markup ?? activeItem.markup}
+                              onChange={e => updateOverride(i, "markup", e.target.value)}
+                              style={{ width: 36, textAlign: "right", padding: 0 }} />
+                            <span style={{ fontSize: 10, color: "var(--text-dim)" }}>%</span>
+                          </div>
+                        </td>
+                        <td>
+                          <input className="tier-editable-input" value={pb.leadTime ?? ""}
+                            onChange={e => updateTierLeadTime(i, e.target.value)}
+                            style={{ textAlign: "left", padding: 0 }} />
+                        </td>
+                        <td className="tier-val-highlight">{formatCurrency(unitPrice)}</td>
+                        <td><button className="btn-tier-remove" onClick={() => removeTier(i)}>Ã—</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-                      // Override material cost with sheet cost per part if available
-                      const matCost = sheetCost != null
-                        ? sheetCost / pb.quantity
-                        : (pb.overrides.material ?? pb.materialCostPerPart);
-                      const cuttingCost  = pb.overrides.cutting  ?? pb.cuttingCostPerPart;
-                      const bendingCost  = pb.overrides.bending  ?? pb.bendingCostPerPart;
-                      const setupCost    = pb.overrides.setup    ?? pb.setupCostPerPart;
-                      const markup       = pb.overrides.markup   ?? activeItem.markup;
-                      const net = matCost + cuttingCost + bendingCost + setupCost;
-                      const unitPrice = net * (1 + markup / 100);
-
-                      return (
-                        <tr key={i}>
-                          <td>
-                            <input type="number" className="tier-editable-input" value={pb.quantity} onChange={(e) => updateActiveItem({
-                              priceBreaks: activeItem.priceBreaks.map((p, idx) => idx === i ? { ...p, quantity: Math.max(1, +e.target.value) } : p)
-                            })} style={{ textAlign: "left", width: 60, paddingLeft: 8 }} />
-                          </td>
-                          <td className={`tier-val-auto${sheetCost != null ? " tier-val-nesting" : ""}`}>{formatCurrency(matCost)}</td>
-                          <td className="tier-val-auto">{formatCurrency(cuttingCost)}</td>
-                          <td className="tier-val-auto">{formatCurrency(bendingCost)}</td>
-                          <td className="tier-val-auto">{formatCurrency(setupCost)}</td>
-                          {tierNestingResults.length > 0 && (
-                            <>
-                              <td className="tier-table-nesting-col" style={{ textAlign: "right" }}>{nestSheets ?? "—"}</td>
-                              <td className="tier-table-nesting-col" style={{ textAlign: "right" }}>{nestUtil != null ? `${nestUtil}%` : "—"}</td>
-                            </>
-                          )}
-                          <td style={{ width: 90 }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>
-                              <input
-                                className={`tier-editable-input ${pb.overrides.markup !== null ? "overridden" : ""}`}
-                                value={pb.overrides.markup ?? activeItem.markup}
-                                onChange={(e) => updateOverride(i, "markup", e.target.value)}
-                                style={{ textAlign: "right", width: 36, padding: 0, flex: "0 0 auto" }}
-                              />
-                              <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>%</span>
-                            </div>
-                          </td>
-                          <td style={{ textAlign: "left" }}>
-                            <input className="tier-editable-input" value={pb.leadTime ?? ""} onChange={(e) => updateTierLeadTime(i, e.target.value)} style={{ textAlign: "left", padding: 0 }} />
-                          </td>
-                          <td className="tier-val-highlight">{formatCurrency(unitPrice)}</td>
-                          <td><button className="btn-tier-remove" onClick={() => removeTier(i)}>×</button></td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                <div className="tier-add-row">
-                  <input type="number" className="tier-add-input" placeholder="Add Qty..."
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const val = parseInt((e.target as HTMLInputElement).value);
-                        if (val) { addTier(val); (e.target as HTMLInputElement).value = ""; }
-                      }
-                    }} />
-                  <span className="tier-add-hint">Press Enter to add volume break</span>
+            {/* Bottom strip footer: add tier + customer + save */}
+            <div className="qbs-footer">
+              <div className="qbs-add-tier">
+                <input type="number" className="tier-add-input" placeholder="Add qtyâ€¦"
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      const val = parseInt((e.target as HTMLInputElement).value);
+                      if (val) { addTier(val); (e.target as HTMLInputElement).value = ""; }
+                    }
+                  }} />
+                <span className="tier-add-hint">â†µ Enter to add tier</span>
+              </div>
+              <div className="qbs-save-area">
+                <div style={{ minWidth: 220 }}>
+                  <CustomerSelector userId={userId} value={saveSelection?.contactId ?? null}
+                    onChange={(_id, sel) => setSaveSelection(sel)} />
                 </div>
+                <textarea rows={1} value={saveNotes} onChange={e => setSaveNotes(e.target.value)}
+                  placeholder="Notesâ€¦" className="qbs-notes" />
               </div>
             </div>
           </div>
-
-          {/* ══ Right column — save/summary ══ */}
-          <div className="quoter-right">
-            {result ? (
-              <QuoteBreakdown result={result} filename={activeItem.filename} onSave={handleSave} saving={phase.name === "saving"} userId={userId} />
-            ) : (
-              <div className="quote-card empty"><p>Select material/machine to see results</p></div>
-            )}
-          </div>
-        </div>
+        </>
       )}
     </div>
   );

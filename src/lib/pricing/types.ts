@@ -7,6 +7,11 @@ export type DXFIntent = "cut" | "bend" | "ignore";
 /** Whether all uploaded files share sheets or each gets its own run */
 export type NestingMode = "combined" | "individual";
 
+/** Nesting packing algorithm */
+export type NestingAlgorithm = "shelf" | "guillotine" | "strip";
+
+/** Sort order applied to parts before packing */
+export type NestingSortOrder = "height" | "area" | "width";
 
 export interface DXFPath {
   id: string;
@@ -152,6 +157,10 @@ export interface NestingConfig {
   allowRotation: boolean;
   /** Material grain direction locked (prevents rotation) */
   grainLocked: boolean;
+  /** Packing algorithm to use */
+  algorithm?: NestingAlgorithm;
+  /** Sort order applied to instances before packing */
+  sortOrder?: NestingSortOrder;
 }
 
 /** A single part placed on a sheet */
