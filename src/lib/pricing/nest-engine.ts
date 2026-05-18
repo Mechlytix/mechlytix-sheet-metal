@@ -25,6 +25,9 @@ export interface NestingPart {
   quantity: number;
   /** SVG path data for visual outline (DXF only) */
   svgPaths?: string[];
+  /** DXF bounding box origin (for normalising path coords) */
+  svgMinX?: number;
+  svgMinY?: number;
 }
 
 /** Sheet to nest onto */
@@ -148,6 +151,8 @@ export function nestParts(
         svgPaths: inst.part.svgPaths,
         originalWidth: inst.part.width,
         originalHeight: inst.part.height,
+        svgMinX: inst.part.svgMinX,
+        svgMinY: inst.part.svgMinY,
       });
       s.usedWidth += partW;
       return true;
@@ -174,6 +179,8 @@ export function nestParts(
         svgPaths: inst.part.svgPaths,
         originalWidth: inst.part.width,
         originalHeight: inst.part.height,
+        svgMinX: inst.part.svgMinX,
+        svgMinY: inst.part.svgMinY,
       });
       return true;
     }
@@ -216,6 +223,8 @@ export function nestParts(
           svgPaths: inst.part.svgPaths,
           originalWidth: pw,
           originalHeight: ph,
+          svgMinX: inst.part.svgMinX,
+          svgMinY: inst.part.svgMinY,
         });
         currentShelves.push({ y: 0, height: ph, usedWidth: pw + gap });
       }

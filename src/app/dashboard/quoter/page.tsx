@@ -464,6 +464,9 @@ export default function QuoterPage() {
           return intent === "cut";
         })
         .map(p => p.svgPath),
+      // Pass DXF bounding box origin so the renderer can normalise path coords to (0,0)
+      svgMinX: item.geometry.dxfData?.minX ?? 0,
+      svgMinY: item.geometry.dxfData?.minY ?? 0,
     }));
 
     const sheet: NestingSheet = {
@@ -708,9 +711,9 @@ export default function QuoterPage() {
             </div>
 
             {/* Viewer + side config split */}
-            <div className="viewer-split">
+            <div className={`viewer-split ${viewerTab === "nesting" ? "is-nesting" : ""}`}>
               {/* Viewer area with tab toggle */}
-              <div className="viewer-split-viewer">
+              <div className={`viewer-split-viewer ${viewerTab === "nesting" ? "is-nesting" : ""}`}>
                 {/* Tab Toggle: Part View / Nesting */}
                 <div className="viewer-tab-toggle">
                   <button

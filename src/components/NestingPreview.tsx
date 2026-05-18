@@ -32,6 +32,136 @@ function utilisationClass(pct: number): string {
   return "nest-util-red";
 }
 
+// ─── Part colour palette ─────────────────────────────────
+
+const PART_PALETTE = [
+  { fill: "rgba(255,102,0,0.25)",   stroke: "rgba(255,102,0,0.9)" },   // orange (brand)
+  { fill: "rgba(59,130,246,0.25)",  stroke: "rgba(59,130,246,0.9)" },  // blue
+  { fill: "rgba(34,197,94,0.25)",   stroke: "rgba(34,197,94,0.9)" },   // green
+  { fill: "rgba(168,85,247,0.25)",  stroke: "rgba(168,85,247,0.9)" },  // purple
+  { fill: "rgba(239,68,68,0.25)",   stroke: "rgba(239,68,68,0.9)" },   // red
+  { fill: "rgba(234,179,8,0.25)",   stroke: "rgba(234,179,8,0.9)" },   // yellow
+  { fill: "rgba(20,184,166,0.25)",  stroke: "rgba(20,184,166,0.9)" },  // teal
+  { fill: "rgba(236,72,153,0.25)",  stroke: "rgba(236,72,153,0.9)" },  // pink
+];
+
+// ─── Placed Part SVG element ─────────────────────────────
+
+function PlacedPart({
+  p,
+  colorIdx,
+  isHovered,
+  strokeW,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  p: SheetPlacement;
+  colorIdx: number;
+  isHovered: boolean;
+  strokeW: number;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const color = PART_PALETTE[colorIdx % PART_PALETTE.length];
+  const svgMinX = p.svgMinX ?? 0;
+  const svgMinY = p.svgMinY ?? 0;
+  const hasPaths = p.svgPaths && p.svgPaths.length > 0;
+
+  // DXF coordinates: Y-axis is flipped vs SVG (DXF Y goes up, SVG Y goes down).
+  // The paths are in absolute DXF coords starting at (svgMinX, svgMinY).
+  // We need to:
+  //   1. Translate by (-svgMinX, -svgMinY) to bring them to origin
+  //   2. Flip Y: translate(0, partHeight) scale(1, -1) because SVG Y goes down
+  // Combined transform (applied right-to-left):
+  //   translate(0, partH) scale(1,-1) translate(-svgMinX, -svgMinY)
+  const partW = p.originalWidth;
+  const partH = p.originalHeight;
+
+  // If the part is rotated, the engine swapped w/h. We need to flip appropriately.
+  // The rotation is applied to the bounding box group, and the paths inside
+  // describe the un-rotated part at originalWidth × originalHeight.
+  const pathTransform = `translate(0, ${partH}) scale(1, -1) translate(${-svgMinX}, ${-svgMinY})`;
+
+  // Rotation: the engine places part with swapped w/h but we still draw the outline
+  // as if un-rotated, then rotate the whole group.
+  // We rotate the inner shape 90° CW and translate to fit within the placed rect.
+  const innerTransform = p.rotated
+    ? `rotate(90, ${partW / 2}, ${partH / 2}) translate(${(partW - partH) / 2}, ${(partH - partW) / 2})`
+    : undefined;
+
+  return (
+    <g
+      transform={`translate(${p.x}, ${p.y})`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      style={{ cursor: "pointer" }}
+    >
+      {/* Bounding box fill */}
+      <rect
+        x={0} y={0}
+        width={p.width} height={p.height}
+        fill={isHovered ? color.fill.replace("0.25", "0.45") : color.fill}
+        stroke={isHovered ? color.stroke : color.stroke.replace("0.9", "0.55")}
+        strokeWidth={isHovered ? strokeW * 2.5 : strokeW * 1.2}
+        rx={strokeW * 0.5}
+        style={{ transition: "fill 0.12s, stroke 0.12s, stroke-width 0.12s" }}
+      />
+
+      {/* SVG part outline clipped to bounding box */}
+      {hasPaths && (
+        <clipPath id={`clip-${p.partId}-${p.x}-${p.y}`}>
+          <rect x={0} y={0} width={p.width} height={p.height} />
+        </clipPath>
+      )}
+      {hasPaths && (
+        <g
+          clipPath={`url(#clip-${p.partId}-${p.x}-${p.y})`}
+          transform={innerTransform}
+        >
+          <g transform={pathTransform}>
+            {p.svgPaths!.map((d, si) => (
+              <path
+                key={si}
+                d={d}
+                fill="none"
+                stroke={isHovered ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)"}
+                strokeWidth={strokeW * 0.9}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </g>
+        </g>
+      )}
+
+      {/* Rotation indicator dot */}
+      {p.rotated && (
+        <circle
+          cx={p.width - strokeW * 4}
+          cy={strokeW * 4}
+          r={strokeW * 2.5}
+          fill={color.stroke}
+          opacity={0.8}
+        />
+      )}
+
+      {/* Part label (filename, truncated) */}
+      <text
+        x={p.width / 2}
+        y={p.height / 2}
+        fontSize={Math.min(strokeW * 8, p.height * 0.25, p.width * 0.25)}
+        fill="rgba(255,255,255,0.55)"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        style={{ pointerEvents: "none", userSelect: "none" }}
+      >
+        {p.filename.replace(/\.[^.]+$/, "").substring(0, 12)}
+      </text>
+    </g>
+  );
+}
+
 // ─── Sheet SVG Renderer ─────────────────────────────────
 
 function SheetSVG({ layout, activePartId, onPartHover }: {
@@ -40,32 +170,24 @@ function SheetSVG({ layout, activePartId, onPartHover }: {
   onPartHover: (id: string | null) => void;
 }) {
   const { sheetWidth, sheetHeight, placements } = layout;
-  const pad = Math.max(sheetWidth, sheetHeight) * 0.03;
+  const pad = Math.max(sheetWidth, sheetHeight) * 0.04;
 
   const vbX = -pad;
   const vbY = -pad;
   const vbW = sheetWidth + pad * 2;
   const vbH = sheetHeight + pad * 2;
 
-  // Generate distinct colours per partId
-  const partColors = useMemo(() => {
+  // Map each unique partId to a palette index
+  const partColorIdx = useMemo(() => {
     const ids = [...new Set(placements.map(p => p.partId))];
-    const palette = [
-      "hsla(25, 95%, 55%, 0.65)",   // orange
-      "hsla(210, 80%, 55%, 0.65)",  // blue
-      "hsla(150, 70%, 45%, 0.65)",  // green
-      "hsla(280, 65%, 55%, 0.65)",  // purple
-      "hsla(350, 80%, 55%, 0.65)",  // red
-      "hsla(45, 90%, 50%, 0.65)",   // gold
-      "hsla(180, 70%, 45%, 0.65)",  // teal
-      "hsla(320, 70%, 55%, 0.65)",  // pink
-    ];
-    const map: Record<string, string> = {};
-    ids.forEach((id, i) => { map[id] = palette[i % palette.length]; });
+    const map: Record<string, number> = {};
+    ids.forEach((id, i) => { map[id] = i; });
     return map;
   }, [placements]);
 
-  const strokeW = Math.max(sheetWidth, sheetHeight) / 500;
+  const strokeW = Math.max(sheetWidth, sheetHeight) / 600;
+  const gridSize = Math.max(sheetWidth, sheetHeight) / 10;
+  const gridId = `nest-grid-${layout.index}`;
 
   return (
     <svg
@@ -73,120 +195,64 @@ function SheetSVG({ layout, activePartId, onPartHover }: {
       className="nest-sheet-svg"
       preserveAspectRatio="xMidYMid meet"
     >
-      {/* Sheet outline */}
-      <rect
-        x={0} y={0}
-        width={sheetWidth} height={sheetHeight}
-        className="nest-sheet-rect"
-        strokeWidth={strokeW * 2}
-      />
-
-      {/* Sheet grid */}
       <defs>
-        <pattern
-          id={`nest-grid-${layout.index}`}
-          width={sheetWidth / 10}
-          height={sheetHeight / 10}
-          patternUnits="userSpaceOnUse"
-        >
-          <line x1={0} y1={0} x2={sheetWidth / 10} y2={0}
-            stroke="var(--border-subtle, #2a2f38)" strokeWidth={strokeW * 0.3} />
-          <line x1={0} y1={0} x2={0} y2={sheetHeight / 10}
-            stroke="var(--border-subtle, #2a2f38)" strokeWidth={strokeW * 0.3} />
+        {/* Subtle grid */}
+        <pattern id={gridId} width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
+          <line
+            x1={0} y1={0} x2={gridSize} y2={0}
+            stroke="rgba(255,255,255,0.04)"
+            strokeWidth={strokeW * 0.5}
+          />
+          <line
+            x1={0} y1={0} x2={0} y2={gridSize}
+            stroke="rgba(255,255,255,0.04)"
+            strokeWidth={strokeW * 0.5}
+          />
         </pattern>
       </defs>
+
+      {/* Sheet background */}
       <rect
         x={0} y={0}
         width={sheetWidth} height={sheetHeight}
-        fill={`url(#nest-grid-${layout.index})`}
+        fill="rgba(255,255,255,0.03)"
+        stroke="rgba(255,255,255,0.25)"
+        strokeWidth={strokeW * 1.5}
       />
 
-      {/* Placed parts */}
-      {placements.map((p, i) => {
-        const isHovered = activePartId === p.partId;
-        const fill = partColors[p.partId] ?? "hsla(0, 0%, 50%, 0.5)";
+      {/* Grid */}
+      <rect x={0} y={0} width={sheetWidth} height={sheetHeight} fill={`url(#${gridId})`} />
 
-        return (
-          <g
-            key={`${p.partId}-${i}`}
-            transform={`translate(${p.x}, ${p.y})`}
-            onMouseEnter={() => onPartHover(p.partId)}
-            onMouseLeave={() => onPartHover(null)}
-            style={{ cursor: "pointer" }}
-          >
-            {/* Part bounding box */}
-            <rect
-              x={0} y={0}
-              width={p.width} height={p.height}
-              fill={fill}
-              stroke={isHovered ? "var(--accent, #ff6600)" : "rgba(255,255,255,0.3)"}
-              strokeWidth={isHovered ? strokeW * 3 : strokeW}
-              rx={strokeW}
-              className="nest-part-rect"
-              style={{
-                filter: isHovered ? "brightness(1.3)" : undefined,
-                transition: "filter 0.15s, stroke-width 0.15s",
-              }}
-            />
-
-            {/* SVG outline if available (DXF parts) */}
-            {p.svgPaths && p.svgPaths.length > 0 && (
-              <g
-                transform={
-                  p.rotated
-                    ? `translate(${p.width / 2}, ${p.height / 2}) rotate(90) translate(${-p.originalWidth / 2}, ${-p.originalHeight / 2})`
-                    : undefined
-                }
-                opacity={0.7}
-              >
-                {p.svgPaths.map((d, si) => (
-                  <path
-                    key={si}
-                    d={d}
-                    fill="none"
-                    stroke="rgba(255,255,255,0.6)"
-                    strokeWidth={strokeW * 0.8}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                ))}
-              </g>
-            )}
-
-            {/* Rotation indicator */}
-            {p.rotated && (
-              <text
-                x={p.width - strokeW * 5}
-                y={strokeW * 8}
-                fontSize={strokeW * 6}
-                fill="rgba(255,255,255,0.7)"
-                textAnchor="end"
-                dominantBaseline="middle"
-              >
-                ↻
-              </text>
-            )}
-          </g>
-        );
-      })}
+      {/* Parts */}
+      {placements.map((p, i) => (
+        <PlacedPart
+          key={`${p.partId}-${i}`}
+          p={p}
+          colorIdx={partColorIdx[p.partId] ?? 0}
+          isHovered={activePartId === p.partId}
+          strokeW={strokeW}
+          onMouseEnter={() => onPartHover(p.partId)}
+          onMouseLeave={() => onPartHover(null)}
+        />
+      ))}
 
       {/* Dimension labels */}
       <text
-        x={sheetWidth / 2} y={-pad * 0.4}
-        fontSize={strokeW * 7}
-        fill="var(--text-dim, #888)"
+        x={sheetWidth / 2} y={-pad * 0.45}
+        fontSize={strokeW * 8}
+        fill="rgba(255,255,255,0.4)"
         textAnchor="middle"
         dominantBaseline="auto"
       >
         {sheetWidth.toFixed(0)}mm
       </text>
       <text
-        x={-pad * 0.4} y={sheetHeight / 2}
-        fontSize={strokeW * 7}
-        fill="var(--text-dim, #888)"
+        x={-pad * 0.45} y={sheetHeight / 2}
+        fontSize={strokeW * 8}
+        fill="rgba(255,255,255,0.4)"
         textAnchor="middle"
         dominantBaseline="middle"
-        transform={`rotate(-90, ${-pad * 0.4}, ${sheetHeight / 2})`}
+        transform={`rotate(-90, ${-pad * 0.45}, ${sheetHeight / 2})`}
       >
         {sheetHeight.toFixed(0)}mm
       </text>
@@ -248,10 +314,13 @@ export function NestingPreview({
     );
   }
 
-  const activeSheet = result.sheets[Math.min(activeSheetIdx, result.sheets.length - 1)];
+  const safeIdx = Math.min(activeSheetIdx, result.sheets.length - 1);
+  const activeSheet = result.sheets[safeIdx];
+  const totalParts = result.sheets.reduce((s, sh) => s + sh.placements.length, 0);
 
   return (
     <div className="nest-preview">
+
       {/* ── Controls bar ── */}
       <div className="nest-controls">
         <div className="nest-control-group">
@@ -275,7 +344,7 @@ export function NestingPreview({
           onClick={onRotationToggle}
           title="Allow 90° rotation"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 12a9 9 0 1 1-6.219-8.56" />
             <polyline points="22 2 22 8 16 8" />
           </svg>
@@ -287,12 +356,17 @@ export function NestingPreview({
           onClick={onGrainLockToggle}
           title="Lock grain direction (disables rotation)"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
           Grain Lock
         </button>
+
+        {/* Summary pill */}
+        <span className="nest-summary-pill">
+          {totalParts} piece{totalParts !== 1 ? "s" : ""} on {result.totalSheets} sheet{result.totalSheets !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {/* ── Stats strip ── */}
@@ -323,13 +397,13 @@ export function NestingPreview({
         )}
       </div>
 
-      {/* ── Sheet tabs ── */}
+      {/* ── Sheet tabs (only shown when >1 sheet) ── */}
       {result.sheets.length > 1 && (
         <div className="nest-sheet-tabs">
           {result.sheets.map((s, i) => (
             <button
               key={i}
-              className={`nest-sheet-tab ${activeSheetIdx === i ? "active" : ""}`}
+              className={`nest-sheet-tab ${safeIdx === i ? "active" : ""}`}
               onClick={() => setActiveSheetIdx(i)}
             >
               <span className="nest-tab-label">Sheet {i + 1}</span>
@@ -356,7 +430,7 @@ export function NestingPreview({
           />
         </div>
         <span className="nest-util-label">
-          {activeSheet.placements.length} part{activeSheet.placements.length !== 1 ? "s" : ""} · {activeSheet.utilisation}% utilised
+          {activeSheet.placements.length} part{activeSheet.placements.length !== 1 ? "s" : ""} on this sheet · {activeSheet.utilisation}% utilised
         </span>
       </div>
 

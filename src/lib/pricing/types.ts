@@ -171,6 +171,9 @@ export interface SheetPlacement {
   /** Original part bounding box (before rotation) */
   originalWidth: number;
   originalHeight: number;
+  /** DXF bounding box origin — needed to normalise path coordinates to (0,0) */
+  svgMinX?: number;
+  svgMinY?: number;
 }
 
 /** Layout of a single sheet */
