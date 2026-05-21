@@ -12,6 +12,69 @@ interface FlatPatternViewerProps {
   } | null;
 }
 
+function getDimensionLayout(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  offset: number,
+  scale: number
+) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const L = Math.hypot(dx, dy);
+
+  if (L < 1e-6) {
+    return null;
+  }
+
+  const ux = dx / L;
+  const uy = dy / L;
+
+  const nx = -uy;
+  const ny = ux;
+
+  const d1x = x1 + offset * nx;
+  const d1y = y1 + offset * ny;
+  const d2x = x2 + offset * nx;
+  const d2y = y2 + offset * ny;
+
+  const gap = 3 * scale;
+  const overshoot = 4 * scale;
+  const s = offset >= 0 ? 1 : -1;
+  const absOffset = Math.abs(offset);
+  const actualGap = Math.min(gap, absOffset);
+
+  const e1sx = x1 + s * actualGap * nx;
+  const e1sy = y1 + s * actualGap * ny;
+  const e1ex = d1x + s * overshoot * nx;
+  const e1ey = d1y + s * overshoot * ny;
+
+  const e2sx = x2 + s * actualGap * nx;
+  const e2sy = y2 + s * actualGap * ny;
+  const e2ex = d2x + s * overshoot * nx;
+  const e2ey = d2y + s * overshoot * ny;
+
+  let angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+
+  const midX = (d1x + d2x) / 2;
+  const midY = (d1y + d2y) / 2;
+
+  return {
+    d1: { x: d1x, y: d1y },
+    d2: { x: d2x, y: d2y },
+    e1s: { x: e1sx, y: e1sy },
+    e1e: { x: e1ex, y: e1ey },
+    e2s: { x: e2sx, y: e2sy },
+    e2e: { x: e2ex, y: e2ey },
+    mid: { x: midX, y: midY },
+    angle,
+    distance: L,
+  };
+}
+
 export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -55,6 +118,7 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
   // Measurement state
   const [measureMode, setMeasureMode] = useState(false);
   const [startMeasurePt, setStartMeasurePt] = useState<{ x: number; y: number } | null>(null);
+  const [secondMeasurePt, setSecondMeasurePt] = useState<{ x: number; y: number } | null>(null);
   const [hoverPt, setHoverPt] = useState<{
     x: number;
     y: number;
@@ -69,6 +133,7 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
     y1: number;
     x2: number;
     y2: number;
+    offset: number;
     distance: number;
   }>>([]);
 
@@ -76,7 +141,9 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (startMeasurePt) {
+        if (secondMeasurePt) {
+          setSecondMeasurePt(null);
+        } else if (startMeasurePt) {
           setStartMeasurePt(null);
         } else if (measureMode) {
           setMeasureMode(false);
@@ -85,7 +152,7 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [startMeasurePt, measureMode]);
+  }, [startMeasurePt, secondMeasurePt, measureMode]);
 
   // Pre-calculate Snap Points in SVG space
   const snapPoints = useMemo(() => {
@@ -240,20 +307,36 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
 
         if (!startMeasurePt) {
           setStartMeasurePt(clickedPt);
+        } else if (!secondMeasurePt) {
+          if (Math.hypot(clickedPt.x - startMeasurePt.x, clickedPt.y - startMeasurePt.y) > 1e-3) {
+            setSecondMeasurePt(clickedPt);
+          }
         } else {
-          const distance = Math.hypot(clickedPt.x - startMeasurePt.x, clickedPt.y - startMeasurePt.y);
-          setCustomDimensions((prev) => [
-            ...prev,
-            {
-              id: `dim-${Date.now()}-${Math.random()}`,
-              x1: startMeasurePt.x,
-              y1: startMeasurePt.y,
-              x2: clickedPt.x,
-              y2: clickedPt.y,
-              distance,
-            },
-          ]);
+          const dx = secondMeasurePt.x - startMeasurePt.x;
+          const dy = secondMeasurePt.y - startMeasurePt.y;
+          const L = Math.hypot(dx, dy);
+          if (L > 1e-6) {
+            const nx = -dy / L;
+            const ny = dx / L;
+            const wx = snapResult.svgX - startMeasurePt.x;
+            const wy = snapResult.svgY - startMeasurePt.y;
+            const offsetVal = wx * nx + wy * ny;
+
+            setCustomDimensions((prev) => [
+              ...prev,
+              {
+                id: `dim-${Date.now()}-${Math.random()}`,
+                x1: startMeasurePt.x,
+                y1: startMeasurePt.y,
+                x2: secondMeasurePt.x,
+                y2: secondMeasurePt.y,
+                offset: offsetVal,
+                distance: L,
+              },
+            ]);
+          }
           setStartMeasurePt(null);
+          setSecondMeasurePt(null);
         }
       }
     }
@@ -354,12 +437,12 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
 
     for (let x = startX; x <= endX; x += gs) {
       lines.push(
-        <line key={`gx-${x}`} x1={x} y1={startY} x2={x} y2={endY} />
+        <line key={`gx-${x}`} x1={x} y1={startY} x2={x} y2={endY} vectorEffect="non-scaling-stroke" />
       );
     }
     for (let y = startY; y <= endY; y += gs) {
       lines.push(
-        <line key={`gy-${y}`} x1={startX} y1={y} x2={endX} y2={y} />
+        <line key={`gy-${y}`} x1={startX} y1={y} x2={endX} y2={y} vectorEffect="non-scaling-stroke" />
       );
     }
     return lines;
@@ -470,30 +553,50 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
               viewBox="0 0 10 10"
               refX="0"
               refY="5"
-              markerWidth="6"
-              markerHeight="6"
+              markerWidth="8"
+              markerHeight="8"
               orient="auto-start-reverse"
-              markerUnits="userSpaceOnUse"
             >
-              <path d="M 10 2 L 0 5 L 10 8 z" fill="rgba(255, 255, 255, 0.4)" />
+              <path d="M 10 3 L 0 5 L 10 7 z" fill="rgba(255, 255, 255, 0.5)" />
             </marker>
             <marker
               id="dimension-arrow-end"
               viewBox="0 0 10 10"
               refX="10"
               refY="5"
-              markerWidth="6"
-              markerHeight="6"
+              markerWidth="8"
+              markerHeight="8"
               orient="auto"
-              markerUnits="userSpaceOnUse"
             >
-              <path d="M 0 2 L 10 5 L 0 8 z" fill="rgba(255, 255, 255, 0.4)" />
+              <path d="M 0 3 L 10 5 L 0 7 z" fill="rgba(255, 255, 255, 0.5)" />
+            </marker>
+            <marker
+              id="custom-dimension-arrow-start"
+              viewBox="0 0 10 10"
+              refX="0"
+              refY="5"
+              markerWidth="8"
+              markerHeight="8"
+              orient="auto-start-reverse"
+            >
+              <path d="M 10 3 L 0 5 L 10 7 z" fill="#f43f5e" />
+            </marker>
+            <marker
+              id="custom-dimension-arrow-end"
+              viewBox="0 0 10 10"
+              refX="10"
+              refY="5"
+              markerWidth="8"
+              markerHeight="8"
+              orient="auto"
+            >
+              <path d="M 0 3 L 10 5 L 0 7 z" fill="#f43f5e" />
             </marker>
           </defs>
 
           {/* Grid */}
           {gridLines && (
-            <g className="dxf-grid" stroke="rgba(255,255,255,0.06)" strokeWidth={annotationStrokeWidth * 0.4}>
+            <g className="dxf-grid" stroke="rgba(255,255,255,0.05)" strokeWidth={0.8}>
               {gridLines}
             </g>
           )}
@@ -511,8 +614,9 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
                   x2={line.x2}
                   y2={height - line.y2}
                   stroke={getLayerColor(line.layer)}
-                  strokeWidth={isBend ? bendStrokeWidth : lineStrokeWidth}
-                  strokeDasharray={isBend ? `${bendStrokeWidth * 4},${bendStrokeWidth * 3}` : undefined}
+                  vectorEffect="non-scaling-stroke"
+                  strokeWidth={isBend ? 1.0 : (line.layer === "CUT_OUTER" ? 1.2 : 1.0)}
+                  strokeDasharray={isBend ? "6,4" : undefined}
                   strokeLinecap="round"
                 />
               );
@@ -528,7 +632,8 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
                   key={arc.id}
                   d={arc.pathData}
                   stroke={getLayerColor(arc.layer)}
-                  strokeWidth={lineStrokeWidth}
+                  vectorEffect="non-scaling-stroke"
+                  strokeWidth={arc.layer === "CUT_OUTER" ? 1.2 : 1.0}
                   strokeLinecap="round"
                 />
               );
@@ -546,14 +651,15 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
                   cy={height - circle.cy}
                   r={circle.r}
                   stroke={getLayerColor(circle.layer)}
-                  strokeWidth={lineStrokeWidth}
+                  vectorEffect="non-scaling-stroke"
+                  strokeWidth={circle.layer === "CUT_OUTER" ? 1.2 : 1.0}
                 />
               );
             })}
           </g>
 
           {/* CAD Bounding Box Dimension Annotations */}
-          <g className="dxf-annotations" stroke="rgba(255, 255, 255, 0.4)" fill="rgba(255, 255, 255, 0.4)">
+          <g className="dxf-annotations" stroke="rgba(255, 255, 255, 0.35)" fill="rgba(255, 255, 255, 0.35)">
             {/* 1. Horizontal Dimension (Width) */}
             {/* Left Extension Line */}
             <line
@@ -561,8 +667,9 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
               y1={height}
               x2={0}
               y2={height + 15}
-              strokeWidth={annotationStrokeWidth * 0.6}
-              opacity={0.5}
+              vectorEffect="non-scaling-stroke"
+              strokeWidth={0.8}
+              opacity={0.4}
             />
             {/* Right Extension Line */}
             <line
@@ -570,8 +677,9 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
               y1={height}
               x2={width}
               y2={height + 15}
-              strokeWidth={annotationStrokeWidth * 0.6}
-              opacity={0.5}
+              vectorEffect="non-scaling-stroke"
+              strokeWidth={0.8}
+              opacity={0.4}
             />
             {/* Dimension Line with Arrows */}
             <line
@@ -579,7 +687,8 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
               y1={height + 10}
               x2={width}
               y2={height + 10}
-              strokeWidth={annotationStrokeWidth}
+              vectorEffect="non-scaling-stroke"
+              strokeWidth={1.0}
               markerStart="url(#dimension-arrow-start)"
               markerEnd="url(#dimension-arrow-end)"
             />
@@ -604,8 +713,9 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
               y1={0}
               x2={-15}
               y2={0}
-              strokeWidth={annotationStrokeWidth * 0.6}
-              opacity={0.5}
+              vectorEffect="non-scaling-stroke"
+              strokeWidth={0.8}
+              opacity={0.4}
             />
             {/* Bottom Extension Line */}
             <line
@@ -613,8 +723,9 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
               y1={height}
               x2={-15}
               y2={height}
-              strokeWidth={annotationStrokeWidth * 0.6}
-              opacity={0.5}
+              vectorEffect="non-scaling-stroke"
+              strokeWidth={0.8}
+              opacity={0.4}
             />
             {/* Dimension Line with Arrows */}
             <line
@@ -622,7 +733,8 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
               y1={0}
               x2={-10}
               y2={height}
-              strokeWidth={annotationStrokeWidth}
+              vectorEffect="non-scaling-stroke"
+              strokeWidth={1.0}
               markerStart="url(#dimension-arrow-start)"
               markerEnd="url(#dimension-arrow-end)"
             />
@@ -644,78 +756,105 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
 
           {/* Render Completed Custom Measurements */}
           {customDimensions.map((dim) => {
-            const midX = (dim.x1 + dim.x2) / 2;
-            const midY = (dim.y1 + dim.y2) / 2;
+            const layout = getDimensionLayout(
+              dim.x1,
+              dim.y1,
+              dim.x2,
+              dim.y2,
+              dim.offset,
+              strokeWidthMultiplier * 0.8
+            );
+            if (!layout) return null;
+
             const label = `${dim.distance.toFixed(1)} mm`;
             const fontSize = Math.max(3.0, strokeWidthMultiplier * 9);
-            const textW = fontSize * 0.6 * label.length;
+            const textW = fontSize * 0.65 * label.length;
             const textH = fontSize * 1.3;
-            const rectX = midX - textW / 2;
-            const rectY = midY - textH / 2;
 
             return (
               <g key={dim.id} className="custom-dimension">
-                {/* Dashed line */}
+                {/* Extension Line 1 */}
                 <line
-                  x1={dim.x1}
-                  y1={dim.y1}
-                  x2={dim.x2}
-                  y2={dim.y2}
+                  x1={layout.e1s.x}
+                  y1={layout.e1s.y}
+                  x2={layout.e1e.x}
+                  y2={layout.e1e.y}
                   stroke="#f43f5e"
-                  strokeWidth={Math.max(0.5, strokeWidthMultiplier * 1.2)}
-                  strokeDasharray={`${strokeWidthMultiplier * 4},${strokeWidthMultiplier * 2}`}
+                  vectorEffect="non-scaling-stroke"
+                  strokeWidth={1.0}
+                  opacity={0.6}
                 />
-                {/* End Ticks */}
-                <circle cx={dim.x1} cy={dim.y1} r={strokeWidthMultiplier * 2} fill="#f43f5e" />
-                <circle cx={dim.x2} cy={dim.y2} r={strokeWidthMultiplier * 2} fill="#f43f5e" />
-                {/* Backdrop Rect */}
-                <rect
-                  x={rectX}
-                  y={rectY}
-                  width={textW}
-                  height={textH}
-                  rx={strokeWidthMultiplier * 1.5}
-                  ry={strokeWidthMultiplier * 1.5}
-                  fill="#0e1012"
+                {/* Extension Line 2 */}
+                <line
+                  x1={layout.e2s.x}
+                  y1={layout.e2s.y}
+                  x2={layout.e2e.x}
+                  y2={layout.e2e.y}
                   stroke="#f43f5e"
-                  strokeWidth={Math.max(0.3, strokeWidthMultiplier * 0.6)}
+                  vectorEffect="non-scaling-stroke"
+                  strokeWidth={1.0}
+                  opacity={0.6}
                 />
-                {/* Text Label */}
-                <text
-                  x={midX}
-                  y={midY}
-                  fontSize={fontSize}
-                  fontFamily="var(--font-mono, monospace)"
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fill="#f43f5e"
-                  fontWeight="bold"
-                >
-                  {label}
-                </text>
+                {/* Dimension Line */}
+                <line
+                  x1={layout.d1.x}
+                  y1={layout.d1.y}
+                  x2={layout.d2.x}
+                  y2={layout.d2.y}
+                  stroke="#f43f5e"
+                  vectorEffect="non-scaling-stroke"
+                  strokeWidth={1.2}
+                  markerStart="url(#custom-dimension-arrow-start)"
+                  markerEnd="url(#custom-dimension-arrow-end)"
+                />
+                {/* Dimension Label Group */}
+                <g transform={`translate(${layout.mid.x}, ${layout.mid.y}) rotate(${layout.angle})`}>
+                  {/* Backdrop Rect */}
+                  <rect
+                    x={-textW / 2 - 2 * strokeWidthMultiplier}
+                    y={-textH / 2}
+                    width={textW + 4 * strokeWidthMultiplier}
+                    height={textH}
+                    fill="#0e1012"
+                  />
+                  {/* Text Label */}
+                  <text
+                    x={0}
+                    y={0}
+                    fontSize={fontSize}
+                    fontFamily="var(--font-mono, monospace)"
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill="#f43f5e"
+                    fontWeight="bold"
+                  >
+                    {label}
+                  </text>
+                </g>
               </g>
             );
           })}
 
-          {/* Render Live Measurement Guideline */}
-          {measureMode && startMeasurePt && hoverPt && (
+          {/* Render Live Measurement Guideline (Step 2) */}
+          {measureMode && startMeasurePt && !secondMeasurePt && hoverPt && (
             <g className="live-guideline">
-              {/* Dashed line */}
+              {/* Dashed line to snap/mouse point */}
               <line
                 x1={startMeasurePt.x}
                 y1={startMeasurePt.y}
                 x2={hoverPt.snappedX}
                 y2={hoverPt.snappedY}
                 stroke="#f43f5e"
-                strokeWidth={Math.max(0.5, strokeWidthMultiplier * 1.2)}
-                strokeDasharray={`${strokeWidthMultiplier * 4},${strokeWidthMultiplier * 2}`}
+                vectorEffect="non-scaling-stroke"
+                strokeWidth={1.0}
+                strokeDasharray="4,3"
                 opacity={0.7}
               />
               {/* Start point tick */}
-              <circle cx={startMeasurePt.x} cy={startMeasurePt.y} r={strokeWidthMultiplier * 2} fill="#f43f5e" />
+              <circle cx={startMeasurePt.x} cy={startMeasurePt.y} r={strokeWidthMultiplier * 2.5} fill="#f43f5e" />
               
               {/* End point tick */}
-              <circle cx={hoverPt.snappedX} cy={hoverPt.snappedY} r={strokeWidthMultiplier * 2} fill="#f43f5e" />
+              <circle cx={hoverPt.snappedX} cy={hoverPt.snappedY} r={strokeWidthMultiplier * 2.5} fill="#f43f5e" />
 
               {/* Live distance text badge */}
               {(() => {
@@ -724,29 +863,26 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
                 const dist = Math.hypot(hoverPt.snappedX - startMeasurePt.x, hoverPt.snappedY - startMeasurePt.y);
                 const label = `${dist.toFixed(1)} mm`;
                 const fontSize = Math.max(3.0, strokeWidthMultiplier * 9);
-                const textW = fontSize * 0.6 * label.length;
+                const textW = fontSize * 0.65 * label.length;
                 const textH = fontSize * 1.3;
-                const rectX = midX - textW / 2;
-                const rectY = midY - textH / 2;
 
                 return (
-                  <>
+                  <g transform={`translate(${midX}, ${midY})`}>
                     <rect
-                      x={rectX}
-                      y={rectY}
-                      width={textW}
+                      x={-textW / 2 - 2 * strokeWidthMultiplier}
+                      y={-textH / 2}
+                      width={textW + 4 * strokeWidthMultiplier}
                       height={textH}
-                      rx={strokeWidthMultiplier * 1.5}
-                      ry={strokeWidthMultiplier * 1.5}
                       fill="#0e1012"
                       stroke="#f43f5e"
-                      strokeWidth={Math.max(0.3, strokeWidthMultiplier * 0.6)}
-                      strokeDasharray={`${strokeWidthMultiplier * 2},${strokeWidthMultiplier * 1}`}
+                      vectorEffect="non-scaling-stroke"
+                      strokeWidth={1.0}
+                      strokeDasharray="2,1"
                       opacity={0.8}
                     />
                     <text
-                      x={midX}
-                      y={midY}
+                      x={0}
+                      y={0}
                       fontSize={fontSize}
                       fontFamily="var(--font-mono, monospace)"
                       textAnchor="middle"
@@ -757,10 +893,111 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
                     >
                       {label}
                     </text>
-                  </>
+                  </g>
                 );
               })()}
             </g>
+          )}
+
+          {/* Render Live Dimension Drag Preview (Step 3) */}
+          {measureMode && startMeasurePt && secondMeasurePt && hoverPt && (
+            (() => {
+              const dx = secondMeasurePt.x - startMeasurePt.x;
+              const dy = secondMeasurePt.y - startMeasurePt.y;
+              const L = Math.hypot(dx, dy);
+              if (L < 1e-6) return null;
+
+              const nx = -dy / L;
+              const ny = dx / L;
+              const wx = hoverPt.x - startMeasurePt.x;
+              const wy = hoverPt.y - startMeasurePt.y;
+              const offsetVal = wx * nx + wy * ny;
+
+              const layout = getDimensionLayout(
+                startMeasurePt.x,
+                startMeasurePt.y,
+                secondMeasurePt.x,
+                secondMeasurePt.y,
+                offsetVal,
+                strokeWidthMultiplier * 0.8
+              );
+              if (!layout) return null;
+
+              const label = `${layout.distance.toFixed(1)} mm`;
+              const fontSize = Math.max(3.0, strokeWidthMultiplier * 9);
+              const textW = fontSize * 0.65 * label.length;
+              const textH = fontSize * 1.3;
+
+              return (
+                <g className="live-dimension-drag">
+                  {/* Extension Line 1 */}
+                  <line
+                    x1={layout.e1s.x}
+                    y1={layout.e1s.y}
+                    x2={layout.e1e.x}
+                    y2={layout.e1e.y}
+                    stroke="#f43f5e"
+                    vectorEffect="non-scaling-stroke"
+                    strokeWidth={1.0}
+                    opacity={0.5}
+                    strokeDasharray="2,2"
+                  />
+                  {/* Extension Line 2 */}
+                  <line
+                    x1={layout.e2s.x}
+                    y1={layout.e2s.y}
+                    x2={layout.e2e.x}
+                    y2={layout.e2e.y}
+                    stroke="#f43f5e"
+                    vectorEffect="non-scaling-stroke"
+                    strokeWidth={1.0}
+                    opacity={0.5}
+                    strokeDasharray="2,2"
+                  />
+                  {/* Dimension Line */}
+                  <line
+                    x1={layout.d1.x}
+                    y1={layout.d1.y}
+                    x2={layout.d2.x}
+                    y2={layout.d2.y}
+                    stroke="#f43f5e"
+                    vectorEffect="non-scaling-stroke"
+                    strokeWidth={1.2}
+                    markerStart="url(#custom-dimension-arrow-start)"
+                    markerEnd="url(#custom-dimension-arrow-end)"
+                    opacity={0.8}
+                  />
+                  {/* Dimension Label Group */}
+                  <g transform={`translate(${layout.mid.x}, ${layout.mid.y}) rotate(${layout.angle})`}>
+                    <rect
+                      x={-textW / 2 - 2 * strokeWidthMultiplier}
+                      y={-textH / 2}
+                      width={textW + 4 * strokeWidthMultiplier}
+                      height={textH}
+                      fill="#0e1012"
+                      stroke="#f43f5e"
+                      vectorEffect="non-scaling-stroke"
+                      strokeWidth={1.0}
+                      strokeDasharray="2,1"
+                      opacity={0.8}
+                    />
+                    <text
+                      x={0}
+                      y={0}
+                      fontSize={fontSize}
+                      fontFamily="var(--font-mono, monospace)"
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill="#f43f5e"
+                      fontWeight="bold"
+                      opacity={0.9}
+                    >
+                      {label}
+                    </text>
+                  </g>
+                </g>
+              );
+            })()
           )}
 
           {/* Render Snap Indicator */}
@@ -893,6 +1130,7 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
           onClick={() => {
             setMeasureMode((m) => !m);
             setStartMeasurePt(null);
+            setSecondMeasurePt(null);
           }}
           className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors border cursor-pointer ${
             measureMode
@@ -908,11 +1146,12 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
             <path d="M7.3 12.5L5.9 13.9" />
           </svg>
         </button>
-        {customDimensions.length > 0 && (
+        {(customDimensions.length > 0 || startMeasurePt !== null || secondMeasurePt !== null) && (
           <button
             onClick={() => {
               setCustomDimensions([]);
               setStartMeasurePt(null);
+              setSecondMeasurePt(null);
             }}
             className="w-8 h-8 rounded-lg bg-white/5 hover:bg-red-500/25 hover:text-red-400 hover:border-red-500/40 text-white/70 flex items-center justify-center transition-colors border border-white/5 cursor-pointer"
             title="Clear Measurements"
