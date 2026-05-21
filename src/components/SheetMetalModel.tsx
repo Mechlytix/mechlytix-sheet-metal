@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useState, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { FlangeNode, BendTransition, MaterialPreset } from "@/lib/types/unfold";
@@ -13,6 +13,7 @@ interface SheetMetalModelProps {
   scale?: number;
   wireframe?: boolean;
   transparent?: boolean;
+  onSelectBaseFlange?: (flangeId: string) => void;
 }
 
 /**
@@ -35,10 +36,17 @@ export function SheetMetalModel({
   scale = 0.01,
   wireframe = false,
   transparent = false,
+  onSelectBaseFlange,
 }: SheetMetalModelProps) {
   return (
     <group scale={[scale, scale, scale]}>
-      <FlangeMesh flange={rootFlange} material={material} wireframe={wireframe} transparent={transparent} />
+      <FlangeMesh
+        flange={rootFlange}
+        material={material}
+        wireframe={wireframe}
+        transparent={transparent}
+        onSelectBaseFlange={onSelectBaseFlange}
+      />
       {rootFlange.connectedBends.map((bend) => (
         <HingeGroup
           key={bend.id}
@@ -47,6 +55,7 @@ export function SheetMetalModel({
           material={material}
           wireframe={wireframe}
           transparent={transparent}
+          onSelectBaseFlange={onSelectBaseFlange}
         />
       ))}
     </group>
@@ -62,11 +71,13 @@ function FlangeMesh({
   material,
   wireframe,
   transparent,
+  onSelectBaseFlange,
 }: {
   flange: FlangeNode;
   material: MaterialPreset;
   wireframe: boolean;
   transparent: boolean;
+  onSelectBaseFlange?: (flangeId: string) => void;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const { width, height, thickness, vertices, indices, normals } = flange.geometry;
@@ -88,8 +99,51 @@ function FlangeMesh({
     return geo;
   }, [hasKernelGeometry, vertices, normals, indices]);
 
+  const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    if (onSelectBaseFlange && hovered) {
+      document.body.style.cursor = "pointer";
+      return () => {
+        document.body.style.cursor = "auto";
+      };
+    }
+  }, [hovered, onSelectBaseFlange]);
+
+  const isBase = flange.label === "Base";
+  const emissiveColor = hovered && onSelectBaseFlange
+    ? "#3b82f6"
+    : (isBase ? "#10b981" : "#000000");
+  const emissiveIntensity = hovered && onSelectBaseFlange
+    ? 0.35
+    : (isBase ? 0.2 : 0);
+
   return (
-    <mesh ref={meshRef} position={[x, y, z]} castShadow receiveShadow geometry={bufferGeo || undefined}>
+    <mesh
+      ref={meshRef}
+      position={[x, y, z]}
+      castShadow
+      receiveShadow
+      geometry={bufferGeo || undefined}
+      onPointerOver={(e) => {
+        if (onSelectBaseFlange) {
+          e.stopPropagation();
+          setHovered(true);
+        }
+      }}
+      onPointerOut={(e) => {
+        if (onSelectBaseFlange) {
+          e.stopPropagation();
+          setHovered(false);
+        }
+      }}
+      onClick={(e) => {
+        if (onSelectBaseFlange) {
+          e.stopPropagation();
+          onSelectBaseFlange(flange.id);
+        }
+      }}
+    >
       {!hasKernelGeometry && (
         <boxGeometry args={[width, thickness, height]} />
       )}
@@ -97,6 +151,8 @@ function FlangeMesh({
         color={material.color}
         metalness={material.metalness}
         roughness={material.roughness}
+        emissive={emissiveColor}
+        emissiveIntensity={emissiveIntensity}
         envMapIntensity={1.2}
         side={THREE.DoubleSide}
         wireframe={wireframe}
@@ -353,12 +409,14 @@ function HingeGroup({
   material,
   wireframe,
   transparent,
+  onSelectBaseFlange,
 }: {
   bend: BendTransition;
   progressRef: React.RefObject<number>;
   material: MaterialPreset;
   wireframe: boolean;
   transparent: boolean;
+  onSelectBaseFlange?: (flangeId: string) => void;
 }) {
   const rotationGroupRef = useRef<THREE.Group>(null);
   const { properties, childFlange } = bend;
@@ -428,7 +486,13 @@ function HingeGroup({
       />
       {/* Rotating group containing child flange */}
       <group ref={rotationGroupRef}>
-        <FlangeMesh flange={childFlange} material={material} wireframe={wireframe} transparent={transparent} />
+        <FlangeMesh
+          flange={childFlange}
+          material={material}
+          wireframe={wireframe}
+          transparent={transparent}
+          onSelectBaseFlange={onSelectBaseFlange}
+        />
         {/* Recursively render any child bends */}
         {childFlange.connectedBends.map((childBend) => (
           <HingeGroup
@@ -438,6 +502,7 @@ function HingeGroup({
             material={material}
             wireframe={wireframe}
             transparent={transparent}
+            onSelectBaseFlange={onSelectBaseFlange}
           />
         ))}
       </group>

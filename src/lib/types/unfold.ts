@@ -51,6 +51,9 @@ export interface FlangeNode {
   /** Center position relative to parent hinge group [x, y, z] */
   localPosition: [number, number, number];
   connectedBends: BendTransition[];
+  flatX?: number;
+  flatY?: number;
+  flatAngle?: number;
 }
 
 /** Root data structure for the entire unfold hierarchy */

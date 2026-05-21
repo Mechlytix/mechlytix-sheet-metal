@@ -14,6 +14,10 @@ interface UseGeometryWorkerReturn {
   parsedTree: UnfoldTree | null;
   /** Upload and parse a STEP file */
   parseFile: (file: File, kFactor: number) => Promise<void>;
+  /** Rebuild the unfold tree around a different base flange */
+  rebuildTree: (kFactor: number, baseFlangeIdx?: number) => Promise<void>;
+  /** Export the current flat pattern as a DXF string */
+  exportDXF: (kFactor: number, baseFlangeIdx?: number) => Promise<string>;
   /** Quick topology analysis (no unfold tree) */
   analyzeFile: (
     file: File
@@ -71,6 +75,30 @@ export function useGeometryWorker(): UseGeometryWorkerReturn {
     [getAPI]
   );
 
+  const rebuildTree = useCallback(
+    async (kFactor: number, baseFlangeIdx?: number) => {
+      try {
+        setError(null);
+        setStatus("parsing");
+        setProgressMessage(`Rebuilding unfold tree around flange ${baseFlangeIdx}...`);
+
+        const api = await getAPI();
+        const tree = await api.rebuildTree(kFactor, baseFlangeIdx);
+
+        setParsedTree(tree as UnfoldTree);
+        setStatus("ready");
+        setProgressMessage(
+          `✓ Unfold tree rebuilt around flange ${baseFlangeIdx}`
+        );
+      } catch (err: any) {
+        setStatus("error");
+        setError(err?.message || "Unknown error during tree rebuilding");
+        setProgressMessage("");
+      }
+    },
+    [getAPI]
+  );
+
   const analyzeFile = useCallback(
     async (file: File) => {
       try {
@@ -86,6 +114,14 @@ export function useGeometryWorker(): UseGeometryWorkerReturn {
     [getAPI]
   );
 
+  const exportDXF = useCallback(
+    async (kFactor: number, baseFlangeIdx?: number): Promise<string> => {
+      const api = await getAPI();
+      return await api.exportDXF(kFactor, baseFlangeIdx);
+    },
+    [getAPI]
+  );
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -95,5 +131,5 @@ export function useGeometryWorker(): UseGeometryWorkerReturn {
     };
   }, []);
 
-  return { status, error, parsedTree, parseFile, analyzeFile, progressMessage };
+  return { status, error, parsedTree, parseFile, rebuildTree, exportDXF, analyzeFile, progressMessage };
 }

@@ -6,7 +6,7 @@ import { useUnfoldAnimation } from "@/hooks/useUnfoldAnimation";
 import { useGeometryWorker } from "@/hooks/useGeometryWorker";
 import { UnfoldControls } from "@/components/UnfoldControls";
 import { ViewToolbar } from "@/components/ViewToolbar";
-import { createLBracketMock, createUChannelMock } from "@/lib/mock/mock-parts";
+import { createLBracketMock, createUChannelMock, generateMockDXF } from "@/lib/mock/mock-parts";
 import { MaterialPreset, MATERIAL_PRESETS, UnfoldTree } from "@/lib/types/unfold";
 
 // Dynamic import — R3F must not SSR
@@ -114,6 +114,7 @@ export default function DashboardPage() {
     MATERIAL_PRESETS[0]
   );
   const [dataSource, setDataSource] = useState<DataSource>("mock");
+  const [baseFlangeIdx, setBaseFlangeIdx] = useState<number | null>(null);
   
   const [viewState, setViewState] = useState({
     wireframe: false,
@@ -140,14 +141,21 @@ export default function DashboardPage() {
     (preset: MaterialPreset) => {
       setSelectedMaterial(preset);
       controls.reset();
+      if (dataSource === "kernel") {
+        const currentBaseIdx = baseFlangeIdx !== null 
+          ? baseFlangeIdx 
+          : parseInt(unfoldTree.rootFlange.id.replace("flange-", ""));
+        worker.rebuildTree(preset.kFactor, currentBaseIdx);
+      }
     },
-    [controls]
+    [controls, dataSource, baseFlangeIdx, worker, unfoldTree]
   );
 
   const handlePartChange = useCallback(
     (partId: string) => {
       setActivePartId(partId);
       setDataSource("mock");
+      setBaseFlangeIdx(null);
       controls.reset();
     },
     [controls]
@@ -156,11 +164,58 @@ export default function DashboardPage() {
   const handleFileUpload = useCallback(
     async (file: File) => {
       controls.reset();
+      setBaseFlangeIdx(null);
       await worker.parseFile(file, selectedMaterial.kFactor);
       setDataSource("kernel");
     },
     [controls, worker, selectedMaterial.kFactor]
   );
+
+  const handleSelectBaseFlange = useCallback(
+    (flangeId: string) => {
+      if (dataSource !== "kernel") return;
+      const idx = parseInt(flangeId.replace("flange-", ""));
+      if (isNaN(idx)) return;
+      setBaseFlangeIdx(idx);
+      worker.rebuildTree(selectedMaterial.kFactor, idx);
+    },
+    [dataSource, selectedMaterial.kFactor, worker]
+  );
+
+  const handleResetBaseFlange = useCallback(() => {
+    if (dataSource !== "kernel") return;
+    setBaseFlangeIdx(null);
+    worker.rebuildTree(selectedMaterial.kFactor, undefined);
+  }, [dataSource, selectedMaterial.kFactor, worker]);
+
+  const handleExportDXF = useCallback(async () => {
+    try {
+      let dxfString = "";
+      if (dataSource === "kernel") {
+        dxfString = await worker.exportDXF(
+          selectedMaterial.kFactor,
+          baseFlangeIdx !== null ? baseFlangeIdx : undefined
+        );
+      } else {
+        dxfString = generateMockDXF(activePartId, selectedMaterial.kFactor);
+      }
+
+      const baseName = unfoldTree.metadata.partName.replace(/\.(step|stp)$/i, "");
+      const fileName = `${baseName.toLowerCase().replace(/\s+/g, "-")}-flat-pattern.dxf`;
+
+      const blob = new Blob([dxfString], { type: "application/dxf" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err?.message || "Failed to export DXF");
+    }
+  }, [dataSource, worker, selectedMaterial.kFactor, baseFlangeIdx, activePartId, unfoldTree]);
 
   // Determine scale based on data source
   const modelScale = dataSource === "kernel" ? 0.005 : 0.01;
@@ -184,6 +239,7 @@ export default function DashboardPage() {
           activePartId={activePartId}
           onFileUpload={handleFileUpload}
           workerStatus={worker.status}
+          onExportDXF={handleExportDXF}
         />
 
         {/* Viewport Wrapper */}
@@ -197,9 +253,26 @@ export default function DashboardPage() {
                 scale={modelScale}
                 wireframe={viewState.wireframe}
                 transparent={viewState.transparent}
+                onSelectBaseFlange={handleSelectBaseFlange}
               />
             </R3FViewport>
           </div>
+
+          {/* Base Flange Indicator */}
+          {dataSource === "kernel" && baseFlangeIdx !== null && (
+            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-[#1a1d21]/95 border border-white/10 px-4 py-2 rounded-full flex items-center gap-3 shadow-xl backdrop-blur-md z-40">
+              <span className="flex h-2 w-2 rounded-full bg-[#10b981] animate-pulse" />
+              <span className="text-xs font-semibold text-white/90">
+                Base Flange: Flange {baseFlangeIdx}
+              </span>
+              <button
+                onClick={handleResetBaseFlange}
+                className="text-[10px] bg-white/10 hover:bg-white/20 text-white/70 hover:text-white px-2.5 py-0.5 rounded-full transition-colors font-medium border border-white/5"
+              >
+                Reset
+              </button>
+            </div>
+          )}
 
           {/* Loading Overlay */}
           {(worker.status === "initializing" || worker.status === "parsing") && (

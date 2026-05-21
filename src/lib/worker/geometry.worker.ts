@@ -11,6 +11,599 @@ import { calculateBendAllowance } from "@/lib/animation/bend-allowance";
 type OC = any;
 let oc: OC | null = null;
 
+// ── Caching State ────────────────────────────────────────
+let cachedShape: any = null;
+let cachedFaces: any[] = [];
+let cachedClassified: ClassifiedFace[] = [];
+let cachedAdjacency: Map<number, Set<number>> | null = null;
+
+function clearCache() {
+  if (cachedShape) {
+    try {
+      cachedShape.delete();
+    } catch (e) {}
+    cachedShape = null;
+  }
+  if (cachedFaces) {
+    for (const face of cachedFaces) {
+      try {
+        face.delete();
+      } catch (e) {}
+    }
+    cachedFaces = [];
+  }
+  cachedClassified = [];
+  if (cachedAdjacency) {
+    cachedAdjacency.clear();
+    cachedAdjacency = null;
+  }
+}
+
+// ── Geometry Helpers ─────────────────────────────────────
+
+function isReversed(orientation: any): boolean {
+  if (!oc) return false;
+  const reversedVal = oc.TopAbs_Orientation.TopAbs_REVERSED;
+  const val = typeof orientation === "object" ? orientation.value : orientation;
+  const target = typeof reversedVal === "object" ? reversedVal.value : reversedVal;
+  return val === target;
+}
+
+function computeLocalBasis(normal: [number, number, number]): { uBasis: [number, number, number]; vBasis: [number, number, number] } {
+  const nx = normal[0], ny = normal[1], nz = normal[2];
+  let ux = 0, uy = 0, uz = 0;
+  // Check if normal is parallel to global Y axis [0, 1, 0]
+  if (Math.abs(ny) < 0.99) {
+    // U = normal x [0, 1, 0] = [nz, 0, -nx]
+    const len = Math.sqrt(nz * nz + nx * nx);
+    ux = nz / len;
+    uy = 0;
+    uz = -nx / len;
+  } else {
+    // U = normal x [0, 0, 1] = [ny, -nx, 0]
+    const len = Math.sqrt(ny * ny + nx * nx);
+    ux = ny / len;
+    uy = -nx / len;
+    uz = 0;
+  }
+  // V = normal x U
+  const vx = ny * uz - nz * uy;
+  const vy = nz * ux - nx * uz;
+  const vz = nx * uy - ny * ux;
+  // Normalize V
+  const lenV = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
+  return {
+    uBasis: [ux, uy, uz],
+    vBasis: [vx / lenV, vy / lenV, vz / lenV],
+  };
+}
+
+function project3DPointTo2D(
+  p3d: [number, number, number],
+  centroid: [number, number, number],
+  uBasis: [number, number, number],
+  vBasis: [number, number, number],
+  flatX: number,
+  flatY: number,
+  flatAngle: number
+): { x: number; y: number } {
+  const dx = p3d[0] - centroid[0];
+  const dy = p3d[1] - centroid[1];
+  const dz = p3d[2] - centroid[2];
+  const u = dx * uBasis[0] + dy * uBasis[1] + dz * uBasis[2];
+  const v = dx * vBasis[0] + dy * vBasis[1] + dz * vBasis[2];
+  const cosA = Math.cos(flatAngle);
+  const sinA = Math.sin(flatAngle);
+  return {
+    x: flatX + u * cosA - v * sinA,
+    y: flatY + u * sinA + v * cosA,
+  };
+}
+
+interface DXFLine {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  layer: string;
+}
+
+interface DXFArc {
+  cx: number;
+  cy: number;
+  r: number;
+  startAngle: number;
+  endAngle: number;
+  layer: string;
+}
+
+interface DXFCircle {
+  cx: number;
+  cy: number;
+  r: number;
+  layer: string;
+}
+
+function traverseTreeForDXF(
+  node: FlangeNode,
+  classified: ClassifiedFace[],
+  lines: DXFLine[],
+  arcs: DXFArc[],
+  circles: DXFCircle[]
+) {
+  const flangeIdx = parseInt(node.id.replace("flange-", ""));
+  const f = classified[flangeIdx];
+  if (!f) return;
+
+  const centroid = computeFaceCentroid(f.face);
+  const uBasis = f.uBasis || [1, 0, 0];
+  const vBasis = f.vBasis || [0, 1, 0];
+  const flatX = node.flatX ?? 0;
+  const flatY = node.flatY ?? 0;
+  const flatAngle = node.flatAngle ?? 0;
+
+  // Traverse wires
+  const faceIter = new oc.TopoDS_Iterator_2(f.face, true, true);
+  const wiresData: Array<{ edges: Array<{ type: string; data: any }>; area: number }> = [];
+
+  while (faceIter.More()) {
+    const wireShape = faceIter.Value();
+    const wire = oc.TopoDS.Wire_1(wireShape);
+    let wireAreaSum = 0;
+    const wireEdges: Array<{ type: string; data: any }> = [];
+
+    const edgeExp = new oc.TopExp_Explorer_2(
+      wire,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+    );
+
+    while (edgeExp.More()) {
+      const edge = oc.TopoDS.Edge_1(edgeExp.Current());
+      const edgeOrientation = edge.Orientation();
+      const reversed = isReversed(edgeOrientation);
+
+      const curveAdaptor = new oc.BRepAdaptor_Curve_2(edge);
+      const curveType = curveAdaptor.GetType();
+      const firstParam = curveAdaptor.FirstParameter();
+      const lastParam = curveAdaptor.LastParameter();
+
+      const p1 = curveAdaptor.Value(firstParam);
+      const p2 = curveAdaptor.Value(lastParam);
+
+      const pt1 = project3DPointTo2D(
+        [p1.X(), p1.Y(), p1.Z()],
+        centroid,
+        uBasis,
+        vBasis,
+        flatX,
+        flatY,
+        flatAngle
+      );
+      const pt2 = project3DPointTo2D(
+        [p2.X(), p2.Y(), p2.Z()],
+        centroid,
+        uBasis,
+        vBasis,
+        flatX,
+        flatY,
+        flatAngle
+      );
+
+      const ptStart = reversed ? pt2 : pt1;
+      const ptEnd = reversed ? pt1 : pt2;
+
+      wireAreaSum += (ptStart.x * ptEnd.y - ptEnd.x * ptStart.y);
+
+      if (curveType === oc.GeomAbs_CurveType.GeomAbs_Line) {
+        wireEdges.push({
+          type: "line",
+          data: { x1: ptStart.x, y1: ptStart.y, x2: ptEnd.x, y2: ptEnd.y }
+        });
+      } else if (curveType === oc.GeomAbs_CurveType.GeomAbs_Circle) {
+        const circle = curveAdaptor.Circle();
+        const radius = circle.Radius();
+        const loc = circle.Location();
+        const center2D = project3DPointTo2D(
+          [loc.X(), loc.Y(), loc.Z()],
+          centroid,
+          uBasis,
+          vBasis,
+          flatX,
+          flatY,
+          flatAngle
+        );
+        loc.delete();
+        circle.delete();
+
+        const paramRange = lastParam - firstParam;
+        if (paramRange > 6.2) {
+          wireEdges.push({
+            type: "circle",
+            data: { cx: center2D.x, cy: center2D.y, r: radius }
+          });
+        } else {
+          let startAngle = Math.atan2(pt1.y - center2D.y, pt1.x - center2D.x) * 180 / Math.PI;
+          let endAngle = Math.atan2(pt2.y - center2D.y, pt2.x - center2D.x) * 180 / Math.PI;
+          if (startAngle < 0) startAngle += 360;
+          if (endAngle < 0) endAngle += 360;
+
+          const midParam = (firstParam + lastParam) / 2;
+          const pm = curveAdaptor.Value(midParam);
+          const ptm = project3DPointTo2D(
+            [pm.X(), pm.Y(), pm.Z()],
+            centroid,
+            uBasis,
+            vBasis,
+            flatX,
+            flatY,
+            flatAngle
+          );
+          let midAngle = Math.atan2(ptm.y - center2D.y, ptm.x - center2D.x) * 180 / Math.PI;
+          if (midAngle < 0) midAngle += 360;
+          pm.delete();
+
+          let isCCW = false;
+          if (startAngle < endAngle) {
+            isCCW = (midAngle > startAngle && midAngle < endAngle);
+          } else {
+            isCCW = (midAngle > startAngle || midAngle < endAngle);
+          }
+
+          if (!isCCW) {
+            const temp = startAngle;
+            startAngle = endAngle;
+            endAngle = temp;
+          }
+
+          wireEdges.push({
+            type: "arc",
+            data: { cx: center2D.x, cy: center2D.y, r: radius, startAngle, endAngle }
+          });
+        }
+      } else {
+        // Fallback for complex curves
+        const numSegments = 16;
+        const pts: { x: number; y: number }[] = [];
+        for (let i = 0; i <= numSegments; i++) {
+          const t = firstParam + (lastParam - firstParam) * (i / numSegments);
+          const p = curveAdaptor.Value(t);
+          pts.push(project3DPointTo2D(
+            [p.X(), p.Y(), p.Z()],
+            centroid,
+            uBasis,
+            vBasis,
+            flatX,
+            flatY,
+            flatAngle
+          ));
+          p.delete();
+        }
+        const segments: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+        for (let i = 0; i < numSegments; i++) {
+          const s = reversed ? numSegments - i : i;
+          const e = reversed ? numSegments - i - 1 : i + 1;
+          segments.push({
+            x1: pts[s].x,
+            y1: pts[s].y,
+            x2: pts[e].x,
+            y2: pts[e].y
+          });
+        }
+        wireEdges.push({
+          type: "spline",
+          data: segments
+        });
+      }
+
+      p1.delete();
+      p2.delete();
+      curveAdaptor.delete();
+      edgeExp.Next();
+    }
+    edgeExp.delete();
+
+    wiresData.push({
+      edges: wireEdges,
+      area: Math.abs(wireAreaSum / 2)
+    });
+
+    faceIter.Next();
+  }
+  faceIter.delete();
+
+  if (wiresData.length > 0) {
+    let outerWireIdx = 0;
+    let maxArea = -1;
+    for (let i = 0; i < wiresData.length; i++) {
+      if (wiresData[i].area > maxArea) {
+        maxArea = wiresData[i].area;
+        outerWireIdx = i;
+      }
+    }
+
+    for (let i = 0; i < wiresData.length; i++) {
+      const isOuter = (i === outerWireIdx);
+      const layer = isOuter ? "CUT_OUTER" : "CUT_INNER";
+
+      for (const edgeInfo of wiresData[i].edges) {
+        if (edgeInfo.type === "line") {
+          lines.push({ ...edgeInfo.data, layer });
+        } else if (edgeInfo.type === "circle") {
+          circles.push({ ...edgeInfo.data, layer });
+        } else if (edgeInfo.type === "arc") {
+          arcs.push({ ...edgeInfo.data, layer });
+        } else if (edgeInfo.type === "spline") {
+          for (const seg of edgeInfo.data) {
+            lines.push({ ...seg, layer });
+          }
+        }
+      }
+    }
+  }
+
+  // Draw bend centerlines
+  const cosP = Math.cos(flatAngle);
+  const sinP = Math.sin(flatAngle);
+
+  for (const bend of node.connectedBends) {
+    const O = bend.properties.axisOrigin;
+    const A = bend.properties.axisDirection;
+    const ba = bend.properties.bendAllowance;
+    const bendWidth = bend.properties.bendWidth;
+    const angle = bend.properties.angle;
+
+    // Parent hinge point in local
+    const hP_3d = [O[0] - centroid[0], O[1] - centroid[1], O[2] - centroid[2]];
+    const uHP = hP_3d[0] * uBasis[0] + hP_3d[1] * uBasis[1] + hP_3d[2] * uBasis[2];
+    const vHP = hP_3d[0] * vBasis[0] + hP_3d[1] * vBasis[1] + hP_3d[2] * vBasis[2];
+    const HP = [uHP, vHP];
+
+    // Hinge axis in parent local basis
+    const uAP = A[0] * uBasis[0] + A[1] * uBasis[1] + A[2] * uBasis[2];
+    const vAP = A[0] * vBasis[0] + A[1] * vBasis[1] + A[2] * vBasis[2];
+    const AP = [uAP, vAP];
+    const lenAP = Math.sqrt(uAP * uAP + vAP * vAP) || 1;
+    const AP_norm = [uAP / lenAP, vAP / lenAP];
+
+    // Direction pointing from parent centroid to hinge (perpendicular to bend line)
+    const dotHP_AP = HP[0] * AP_norm[0] + HP[1] * AP_norm[1];
+    const DP = [HP[0] - dotHP_AP * AP_norm[0], HP[1] - dotHP_AP * AP_norm[1]];
+    const lenDP = Math.sqrt(DP[0] * DP[0] + DP[1] * DP[1]);
+    if (lenDP > 0.001) {
+      DP[0] /= lenDP;
+      DP[1] /= lenDP;
+    }
+
+    // Parent hinge point in global flat coordinates
+    const hP_global = [
+      flatX + HP[0] * cosP - HP[1] * sinP,
+      flatY + HP[0] * sinP + HP[1] * cosP
+    ];
+
+    // DP in global flat coordinates
+    const DP_global = [
+      DP[0] * cosP - DP[1] * sinP,
+      DP[0] * sinP + DP[1] * cosP
+    ];
+
+    // Centerline origin shifted by half of bend allowance
+    const centerlineOrigin = [
+      hP_global[0] + DP_global[0] * (ba / 2),
+      hP_global[1] + DP_global[1] * (ba / 2)
+    ];
+
+    // Hinge direction in global flat coordinates
+    const V_bend = [
+      AP_norm[0] * cosP - AP_norm[1] * sinP,
+      AP_norm[0] * sinP + AP_norm[1] * cosP
+    ];
+
+    const x1 = centerlineOrigin[0] - V_bend[0] * (bendWidth / 2);
+    const y1 = centerlineOrigin[1] - V_bend[1] * (bendWidth / 2);
+    const x2 = centerlineOrigin[0] + V_bend[0] * (bendWidth / 2);
+    const y2 = centerlineOrigin[1] + V_bend[1] * (bendWidth / 2);
+
+    const layer = angle > 0 ? "BEND_UP" : "BEND_DOWN";
+    lines.push({ x1, y1, x2, y2, layer });
+
+    // Recurse
+    traverseTreeForDXF(bend.childFlange, classified, lines, arcs, circles);
+  }
+}
+
+function generateDXF(
+  lines: DXFLine[],
+  arcs: DXFArc[],
+  circles: DXFCircle[]
+): string {
+  let dxf = "";
+  
+  // Header / Tables section for layers
+  dxf += "  0\nSECTION\n  2\nHEADER\n  0\nENDSEC\n";
+  dxf += "  0\nSECTION\n  2\nTABLES\n  0\nTABLE\n  2\nLTYPE\n 70\n1\n";
+  dxf += "  0\nLTYPE\n  2\nCONTINUOUS\n 70\n0\n  3\nSolid line\n 72\n65\n 73\n0\n 40\n0.0\n";
+  dxf += "  0\nENDTAB\n";
+  
+  dxf += "  0\nTABLE\n  2\nLAYER\n 70\n4\n";
+  // Layer CUT_OUTER (Red = 1)
+  dxf += "  0\nLAYER\n  2\nCUT_OUTER\n 70\n0\n 62\n1\n  6\nCONTINUOUS\n";
+  // Layer CUT_INNER (Yellow = 2)
+  dxf += "  0\nLAYER\n  2\nCUT_INNER\n 70\n0\n 62\n2\n  6\nCONTINUOUS\n";
+  // Layer BEND_UP (Green = 3)
+  dxf += "  0\nLAYER\n  2\nBEND_UP\n 70\n0\n 62\n3\n  6\nCONTINUOUS\n";
+  // Layer BEND_DOWN (Magenta = 6)
+  dxf += "  0\nLAYER\n  2\nBEND_DOWN\n 70\n0\n 62\n6\n  6\nCONTINUOUS\n";
+  dxf += "  0\nENDTAB\n  0\nENDSEC\n";
+  
+  dxf += "  0\nSECTION\n  2\nBLOCKS\n  0\nENDSEC\n";
+  dxf += "  0\nSECTION\n  2\nENTITIES\n";
+  
+  for (const line of lines) {
+    dxf += `  0\nLINE\n  8\n${line.layer}\n`;
+    dxf += ` 10\n${line.x1.toFixed(4)}\n 20\n${line.y1.toFixed(4)}\n 30\n0.0\n`;
+    dxf += ` 11\n${line.x2.toFixed(4)}\n 21\n${line.y2.toFixed(4)}\n 31\n0.0\n`;
+  }
+  
+  for (const circle of circles) {
+    dxf += `  0\nCIRCLE\n  8\n${circle.layer}\n`;
+    dxf += ` 10\n${circle.cx.toFixed(4)}\n 20\n${circle.cy.toFixed(4)}\n 30\n0.0\n`;
+    dxf += ` 40\n${circle.r.toFixed(4)}\n`;
+  }
+  
+  for (const arc of arcs) {
+    dxf += `  0\nARC\n  8\n${arc.layer}\n`;
+    dxf += ` 10\n${arc.cx.toFixed(4)}\n 20\n${arc.cy.toFixed(4)}\n 30\n0.0\n`;
+    dxf += ` 40\n${arc.r.toFixed(4)}\n`;
+    dxf += ` 50\n${arc.startAngle.toFixed(4)}\n`;
+    dxf += ` 51\n${arc.endAngle.toFixed(4)}\n`;
+  }
+  
+  dxf += "  0\nENDSEC\n  0\nEOF\n";
+  return dxf;
+}
+
+function assignFlatCoordinates(
+  node: FlangeNode,
+  flatX: number,
+  flatY: number,
+  flatAngle: number,
+  classified: ClassifiedFace[],
+  all2DVertices: { x: number; y: number }[]
+) {
+  node.flatX = flatX;
+  node.flatY = flatY;
+  node.flatAngle = flatAngle;
+
+  const flangeIdx = parseInt(node.id.replace("flange-", ""));
+  const f = classified[flangeIdx];
+  if (!f) return;
+  const centroid = computeFaceCentroid(f.face);
+  const uBasis = f.uBasis || [1, 0, 0];
+  const vBasis = f.vBasis || [0, 1, 0];
+
+  // Project vertices of this flange to 2D and store in all2DVertices
+  if (node.geometry.vertices && node.geometry.vertices.length > 0) {
+    const verts = node.geometry.vertices;
+    const cosA = Math.cos(flatAngle);
+    const sinA = Math.sin(flatAngle);
+
+    for (let i = 0; i < verts.length; i += 3) {
+      const vx = verts[i];
+      const vy = verts[i + 1];
+      const vz = verts[i + 2];
+
+      // local u, v relative to centroid
+      const dx = vx - centroid[0];
+      const dy = vy - centroid[1];
+      const dz = vz - centroid[2];
+
+      const u = dx * uBasis[0] + dy * uBasis[1] + dz * uBasis[2];
+      const v = dx * vBasis[0] + dy * vBasis[1] + dz * vBasis[2];
+
+      // global 2D flat coordinates
+      const fx = flatX + u * cosA - v * sinA;
+      const fy = flatY + u * sinA + v * cosA;
+
+      all2DVertices.push({ x: fx, y: fy });
+    }
+  }
+
+  // Recurse on children
+  for (const bend of node.connectedBends) {
+    const child = bend.childFlange;
+    const childIdx = parseInt(child.id.replace("flange-", ""));
+    const fc = classified[childIdx];
+    if (!fc) continue;
+
+    const O = bend.properties.axisOrigin;
+    const A = bend.properties.axisDirection;
+
+    // Parent hinge point in local
+    const hP_3d = [O[0] - centroid[0], O[1] - centroid[1], O[2] - centroid[2]];
+    const uHP = hP_3d[0] * uBasis[0] + hP_3d[1] * uBasis[1] + hP_3d[2] * uBasis[2];
+    const vHP = hP_3d[0] * vBasis[0] + hP_3d[1] * vBasis[1] + hP_3d[2] * vBasis[2];
+    const HP = [uHP, vHP];
+
+    // Hinge axis in parent local basis
+    const uAP = A[0] * uBasis[0] + A[1] * uBasis[1] + A[2] * uBasis[2];
+    const vAP = A[0] * vBasis[0] + A[1] * vBasis[1] + A[2] * vBasis[2];
+    const AP = [uAP, vAP];
+    const lenAP = Math.sqrt(uAP * uAP + vAP * vAP) || 1;
+    const AP_norm = [uAP / lenAP, vAP / lenAP];
+
+    // Direction pointing from parent centroid to hinge (perpendicular to bend line)
+    const dotHP_AP = HP[0] * AP_norm[0] + HP[1] * AP_norm[1];
+    const DP = [HP[0] - dotHP_AP * AP_norm[0], HP[1] - dotHP_AP * AP_norm[1]];
+    const lenDP = Math.sqrt(DP[0] * DP[0] + DP[1] * DP[1]);
+    if (lenDP > 0.001) {
+      DP[0] /= lenDP;
+      DP[1] /= lenDP;
+    }
+
+    // Child hinge point in local
+    const centroidChild = computeFaceCentroid(fc.face);
+    const uBasisChild = fc.uBasis || [1, 0, 0];
+    const vBasisChild = fc.vBasis || [0, 1, 0];
+
+    const hC_3d = [O[0] - centroidChild[0], O[1] - centroidChild[1], O[2] - centroidChild[2]];
+    const uHC = hC_3d[0] * uBasisChild[0] + hC_3d[1] * uBasisChild[1] + hC_3d[2] * uBasisChild[2];
+    const vHC = hC_3d[0] * vBasisChild[0] + hC_3d[1] * vBasisChild[1] + hC_3d[2] * vBasisChild[2];
+    const HC = [uHC, vHC];
+
+    // Hinge axis in child local basis
+    const uAC = A[0] * uBasisChild[0] + A[1] * uBasisChild[1] + A[2] * uBasisChild[2];
+    const vAC = A[0] * vBasisChild[0] + A[1] * vBasisChild[1] + A[2] * vBasisChild[2];
+    const AC = [uAC, vAC];
+    const lenAC = Math.sqrt(uAC * uAC + vAC * vAC) || 1;
+    const AC_norm = [uAC / lenAC, vAC / lenAC];
+
+    // Direction pointing from child centroid to hinge (perpendicular to bend line)
+    const dotHC_AC = HC[0] * AC_norm[0] + HC[1] * AC_norm[1];
+    const DC = [HC[0] - dotHC_AC * AC_norm[0], HC[1] - dotHC_AC * AC_norm[1]];
+    const lenDC = Math.sqrt(DC[0] * DC[0] + DC[1] * DC[1]);
+    if (lenDC > 0.001) {
+      DC[0] /= lenDC;
+      DC[1] /= lenDC;
+    }
+
+    // Parent's hinge point in global flat coordinates
+    const cosP = Math.cos(flatAngle);
+    const sinP = Math.sin(flatAngle);
+    const hP_global = [
+      flatX + HP[0] * cosP - HP[1] * sinP,
+      flatY + HP[0] * sinP + HP[1] * cosP
+    ];
+
+    // DP in global flat coordinates
+    const DP_global = [
+      DP[0] * cosP - DP[1] * sinP,
+      DP[0] * sinP + DP[1] * cosP
+    ];
+
+    // Child hinge point in global flat coordinates: shifted by bend allowance
+    const ba = bend.properties.bendAllowance;
+    const hC_global = [
+      hP_global[0] + DP_global[0] * ba,
+      hP_global[1] + DP_global[1] * ba
+    ];
+
+    // Child angle: thetaC = phiP - phiC + pi
+    const phiP = Math.atan2(DP_global[1], DP_global[0]);
+    const phiC = Math.atan2(DC[1], DC[0]);
+    const childAngle = phiP - phiC + Math.PI;
+
+    // Child flat center
+    const cosC = Math.cos(childAngle);
+    const sinC = Math.sin(childAngle);
+    const childFlatX = hC_global[0] - (HC[0] * cosC - HC[1] * sinC);
+    const childFlatY = hC_global[1] - (HC[0] * sinC + HC[1] * cosC);
+
+    // Recurse on child
+    assignFlatCoordinates(child, childFlatX, childFlatY, childAngle, classified, all2DVertices);
+  }
+}
+
 // ── Initialization ──────────────────────────────────────
 
 async function initialize(): Promise<{ status: string }> {
@@ -65,6 +658,8 @@ interface ClassifiedFace {
   area: number;
   // Plane data
   normal?: [number, number, number];
+  uBasis?: [number, number, number];
+  vBasis?: [number, number, number];
   // Cylinder data
   axisOrigin?: [number, number, number];
   axisDirection?: [number, number, number];
@@ -155,12 +750,19 @@ function classifyFaces(faces: any[]): ClassifiedFace[] {
       const plane = surface.Plane();
       const axis = plane.Axis();
       const dir = axis.Direction();
+      let normalVec: [number, number, number] = [dir.X(), dir.Y(), dir.Z()];
+      if (isReversed(face.Orientation())) {
+        normalVec = [-normalVec[0], -normalVec[1], -normalVec[2]];
+      }
+      const basis = computeLocalBasis(normalVec);
       classified = {
         index,
         type: "plane",
         face,
         area,
-        normal: [dir.X(), dir.Y(), dir.Z()],
+        normal: normalVec,
+        uBasis: basis.uBasis,
+        vBasis: basis.vBasis,
       };
       plane.delete();
     } else if (surfType === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder) {
@@ -253,15 +855,43 @@ function computeBendAngle(
 ): number {
   const f1 = classified[flange1Idx];
   const f2 = classified[flange2Idx];
-  if (!f1.normal || !f2.normal) return Math.PI / 2; // fallback
+  const bend = classified[bendIdx];
+  if (!f1.normal || !f2.normal || !bend.axisDirection) return Math.PI / 2; // fallback
 
-  // Angle between face normals
-  const dot =
-    f1.normal[0] * f2.normal[0] +
-    f1.normal[1] * f2.normal[1] +
-    f1.normal[2] * f2.normal[2];
-  const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
-  return Math.PI - angle; // bend angle = supplement of dihedral angle
+  const n1 = f1.normal;
+  const n2 = f2.normal;
+  const a = bend.axisDirection;
+
+  // Project n1 and n2 perpendicular to a
+  const dot1 = n1[0] * a[0] + n1[1] * a[1] + n1[2] * a[2];
+  const p1 = [n1[0] - dot1 * a[0], n1[1] - dot1 * a[1], n1[2] - dot1 * a[2]];
+  const len1 = Math.sqrt(p1[0] * p1[0] + p1[1] * p1[1] + p1[2] * p1[2]);
+
+  const dot2 = n2[0] * a[0] + n2[1] * a[1] + n2[2] * a[2];
+  const p2 = [n2[0] - dot2 * a[0], n2[1] - dot2 * a[1], n2[2] - dot2 * a[2]];
+  const len2 = Math.sqrt(p2[0] * p2[0] + p2[1] * p2[1] + p2[2] * p2[2]);
+
+  if (len1 < 1e-5 || len2 < 1e-5) {
+    // If one of the normals is parallel to the bend axis, fallback to the supplement of the angle
+    const dot = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
+    const rawAngle = Math.acos(Math.max(-1, Math.min(1, dot)));
+    return Math.PI - rawAngle;
+  }
+
+  const u1 = [p1[0] / len1, p1[1] / len1, p1[2] / len1];
+  const u2 = [p2[0] / len2, p2[1] / len2, p2[2] / len2];
+
+  // Cross product: u1 x u2
+  const cx = u1[1] * u2[2] - u1[2] * u2[1];
+  const cy = u1[2] * u2[0] - u1[0] * u2[2];
+  const cz = u1[0] * u2[1] - u1[1] * u2[0];
+
+  // Dot product of (u1 x u2) with a
+  const sinTheta = cx * a[0] + cy * a[1] + cz * a[2];
+  // Dot product of u1 with u2
+  const cosTheta = u1[0] * u2[0] + u1[1] * u2[1] + u1[2] * u2[2];
+
+  return Math.atan2(sinTheta, cosTheta);
 }
 
 /** Compute the bounding box centroid of a single face's tessellation */
@@ -329,13 +959,20 @@ function buildUnfoldTree(
   classified: ClassifiedFace[],
   adjacency: Map<number, Set<number>>,
   shape: any,
-  kFactor: number
+  kFactor: number,
+  baseFlangeIdx?: number
 ): UnfoldTree | null {
   const planes = classified.filter((f) => f.type === "plane");
   if (planes.length === 0) return null;
 
-  // Seed: largest planar face
-  const seed = planes.reduce((a, b) => (a.area > b.area ? a : b));
+  // Seed: if baseFlangeIdx is specified and is a plane, use it. Otherwise, use largest planar face
+  let seed = planes.reduce((a, b) => (a.area > b.area ? a : b));
+  if (baseFlangeIdx !== undefined) {
+    const found = planes.find(p => p.index === baseFlangeIdx);
+    if (found) {
+      seed = found;
+    }
+  }
   const thickness = detectThickness(classified, adjacency, seed.index);
 
   // Tessellate the full shape once upfront (higher quality)
@@ -375,7 +1012,7 @@ function buildUnfoldTree(
           );
           const radius = neighbor.radius || 3;
           const ba = calculateBendAllowance(
-            (angle * 180) / Math.PI,
+            (Math.abs(angle) * 180) / Math.PI,
             radius,
             kFactor,
             thickness
@@ -414,13 +1051,17 @@ function buildUnfoldTree(
       }
     }
 
+    const uBasis = flange.uBasis || [1, 0, 0];
+    const vBasis = flange.vBasis || [0, 1, 0];
+    const dims = computeFaceDimensions(flange.face, uBasis, vBasis);
+
     return {
       id: `flange-${flangeIdx}`,
       label: isRoot ? "Base" : `Flange ${flangeIdx}`,
       geometry: {
         ...geo,
-        width: 0,
-        height: 0,
+        width: dims.width,
+        height: dims.height,
         thickness,
       },
       localPosition: isRoot ? centroid as [number, number, number] : [0, 0, 0],
@@ -431,6 +1072,21 @@ function buildUnfoldTree(
   const rootFlange = buildNode(seed.index, true);
   const totalFlanges = planes.length;
   const totalBends = classified.filter((f) => f.type === "cylinder").length;
+
+  // Compute 2D flat coordinates and exact flat pattern dimensions
+  const all2DVertices: { x: number; y: number }[] = [];
+  assignFlatCoordinates(rootFlange, 0, 0, 0, classified, all2DVertices);
+
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  for (const v of all2DVertices) {
+    if (v.x < minX) minX = v.x;
+    if (v.x > maxX) maxX = v.x;
+    if (v.y < minY) minY = v.y;
+    if (v.y > maxY) maxY = v.y;
+  }
+  const flatWidth = isFinite(maxX - minX) ? maxX - minX : 0;
+  const flatHeight = isFinite(maxY - minY) ? maxY - minY : 0;
 
   // Compute bounding box from tessellated root
   const bb = computeBoundingBox(shape);
@@ -445,7 +1101,10 @@ function buildUnfoldTree(
       kFactor,
       thickness,
       boundingBox: bb,
-      flatPatternDimensions: { width: 0, height: 0 }, // TODO: compute
+      flatPatternDimensions: {
+        width: Math.round(flatWidth * 10) / 10,
+        height: Math.round(flatHeight * 10) / 10,
+      },
     },
   };
 }
@@ -647,8 +1306,12 @@ function computeFaceEdgeLengths(face: any): { outerPerimeter: number; innerCount
   return { outerPerimeter, innerCount };
 }
 
-/** Compute face bounding box dimensions in local XZ plane */
-function computeFaceDimensions(face: any): { width: number; height: number } {
+/** Compute face bounding box dimensions projected onto local basis */
+function computeFaceDimensions(
+  face: any,
+  uBasis: [number, number, number],
+  vBasis: [number, number, number]
+): { width: number; height: number } {
   const location = new oc.TopLoc_Location_1();
   const triangulation = oc.BRep_Tool.Triangulation(face, location);
   if (triangulation.IsNull()) {
@@ -659,42 +1322,88 @@ function computeFaceDimensions(face: any): { width: number; height: number } {
   const nbNodes = tri.NbNodes();
   const trsf = location.Transformation();
 
-  let minX = Infinity, maxX = -Infinity;
-  let minZ = Infinity, maxZ = -Infinity;
+  let minU = Infinity, maxU = -Infinity;
+  let minV = Infinity, maxV = -Infinity;
   for (let i = 1; i <= nbNodes; i++) {
     const node = tri.Node(i).Transformed(trsf);
-    if (node.X() < minX) minX = node.X();
-    if (node.X() > maxX) maxX = node.X();
-    if (node.Z() < minZ) minZ = node.Z();
-    if (node.Z() > maxZ) maxZ = node.Z();
+    const ux = node.X();
+    const uy = node.Y();
+    const uz = node.Z();
+    // Project node coordinates onto uBasis and vBasis
+    const u = ux * uBasis[0] + uy * uBasis[1] + uz * uBasis[2];
+    const v = ux * vBasis[0] + uy * vBasis[1] + uz * vBasis[2];
+
+    if (u < minU) minU = u;
+    if (u > maxU) maxU = u;
+    if (v < minV) minV = v;
+    if (v > maxV) maxV = v;
     node.delete();
   }
   location.delete();
   trsf.delete();
   return {
-    width:  isFinite(maxX - minX) ? maxX - minX : 0,
-    height: isFinite(maxZ - minZ) ? maxZ - minZ : 0,
+    width:  isFinite(maxU - minU) ? maxU - minU : 0,
+    height: isFinite(maxV - minV) ? maxV - minV : 0,
   };
 }
 
 /** Traverse unfold tree to compute flat pattern bounding dimensions */
 function computeFlatPatternDims(
   node: import("@/lib/types/unfold").FlangeNode,
-  thickness: number
+  classified: ClassifiedFace[]
 ): { width: number; height: number } {
-  // Walk the tree linearly — sum widths + bend allowances, take max height
-  let totalWidth = node.geometry.width || 0;
-  let maxHeight = node.geometry.height || 0;
+  const all2DVertices: { x: number; y: number }[] = [];
 
-  for (const bend of node.connectedBends) {
-    const ba = bend.properties.bendAllowance;
-    const child = bend.childFlange;
-    const childDims = computeFlatPatternDims(child, thickness);
-    totalWidth += ba + childDims.width;
-    if (childDims.height > maxHeight) maxHeight = childDims.height;
+  function collectVertices(n: import("@/lib/types/unfold").FlangeNode) {
+    const flangeIdx = parseInt(n.id.replace("flange-", ""));
+    const f = classified.find((c) => c.index === flangeIdx);
+    if (f && f.face) {
+      const centroid = computeFaceCentroid(f.face);
+      const uBasis = f.uBasis || [1, 0, 0];
+      const vBasis = f.vBasis || [0, 1, 0];
+      const flatX = n.flatX || 0;
+      const flatY = n.flatY || 0;
+      const flatAngle = n.flatAngle || 0;
+
+      const verts = n.geometry.vertices;
+      if (verts && verts.length > 0) {
+        const cosA = Math.cos(flatAngle);
+        const sinA = Math.sin(flatAngle);
+        for (let i = 0; i < verts.length; i += 3) {
+          const vx = verts[i];
+          const vy = verts[i + 1];
+          const vz = verts[i + 2];
+          const dx = vx - centroid[0];
+          const dy = vy - centroid[1];
+          const dz = vz - centroid[2];
+          const u = dx * uBasis[0] + dy * uBasis[1] + dz * uBasis[2];
+          const v = dx * vBasis[0] + dy * vBasis[1] + dz * vBasis[2];
+          const fx = flatX + u * cosA - v * sinA;
+          const fy = flatY + u * sinA + v * cosA;
+          all2DVertices.push({ x: fx, y: fy });
+        }
+      }
+    }
+    for (const bend of n.connectedBends) {
+      collectVertices(bend.childFlange);
+    }
   }
 
-  return { width: totalWidth, height: maxHeight };
+  collectVertices(node);
+
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  for (const v of all2DVertices) {
+    if (v.x < minX) minX = v.x;
+    if (v.x > maxX) maxX = v.x;
+    if (v.y < minY) minY = v.y;
+    if (v.y > maxY) maxY = v.y;
+  }
+
+  return {
+    width: isFinite(maxX - minX) ? maxX - minX : 0,
+    height: isFinite(maxY - minY) ? maxY - minY : 0,
+  };
 }
 
 // ── Public API ──────────────────────────────────────────
@@ -708,11 +1417,12 @@ const api = {
   ): Promise<UnfoldTree> {
     if (!oc) await initialize();
 
-    const shape = readSTEP(fileBuffer);
-    const faces = extractFaces(shape);
-    const classified = classifyFaces(faces);
-    const adjacency = buildAdjacency(shape, faces);
-    const tree = buildUnfoldTree(classified, adjacency, shape, kFactor);
+    clearCache();
+    cachedShape = readSTEP(fileBuffer);
+    cachedFaces = extractFaces(cachedShape);
+    cachedClassified = classifyFaces(cachedFaces);
+    cachedAdjacency = buildAdjacency(cachedShape, cachedFaces);
+    const tree = buildUnfoldTree(cachedClassified, cachedAdjacency, cachedShape, kFactor);
 
     if (!tree) {
       throw new Error(
@@ -721,6 +1431,45 @@ const api = {
     }
 
     return tree;
+  },
+
+  async rebuildTree(
+    kFactor: number,
+    baseFlangeIdx?: number
+  ): Promise<UnfoldTree> {
+    if (!oc) await initialize();
+    if (!cachedShape || cachedClassified.length === 0 || !cachedAdjacency) {
+      throw new Error("No cached geometry. Please load a STEP file first.");
+    }
+    const tree = buildUnfoldTree(cachedClassified, cachedAdjacency, cachedShape, kFactor, baseFlangeIdx);
+    if (!tree) {
+      throw new Error(
+        `Could not rebuild unfold tree. No planar faces found for base flange ${baseFlangeIdx}`
+      );
+    }
+    return tree;
+  },
+
+  async exportDXF(
+    kFactor: number,
+    baseFlangeIdx?: number
+  ): Promise<string> {
+    if (!oc) await initialize();
+    if (!cachedShape || cachedClassified.length === 0 || !cachedAdjacency) {
+      throw new Error("No cached geometry. Please load a STEP file first.");
+    }
+    const tree = buildUnfoldTree(cachedClassified, cachedAdjacency, cachedShape, kFactor, baseFlangeIdx);
+    if (!tree) {
+      throw new Error("Could not rebuild unfold tree for DXF export.");
+    }
+
+    const lines: DXFLine[] = [];
+    const arcs: DXFArc[] = [];
+    const circles: DXFCircle[] = [];
+
+    traverseTreeForDXF(tree.rootFlange, cachedClassified, lines, arcs, circles);
+
+    return generateDXF(lines, arcs, circles);
   },
 
   /** Extract geometry data needed for pricing, from a STEP file */
@@ -771,8 +1520,12 @@ const api = {
     let faceWidth = 0;
     let faceHeight = 0;
 
-    if (topFace) {
-      const dims = computeFaceDimensions(topFace);
+    if (topFace && sortedPlanes[0]) {
+      const dims = computeFaceDimensions(
+        topFace,
+        sortedPlanes[0].uBasis || [1, 0, 0],
+        sortedPlanes[0].vBasis || [0, 1, 0]
+      );
       faceWidth  = dims.width;
       faceHeight = dims.height;
       partArea   = sortedPlanes[0].area; // already in mm²
@@ -798,10 +1551,14 @@ const api = {
       if (tree) {
         // Enrich flange dimensions from tessellation
         function enrichNode(node: FlangeNode) {
+          const targetIdx = parseInt(node.id.replace("flange-", ""));
+          const targetFace = classified.find((c) => c.index === targetIdx);
           const dims = node.geometry.width > 0
             ? { width: node.geometry.width, height: node.geometry.height }
             : computeFaceDimensions(
-                classified.find((c) => c.index === parseInt(node.id.replace("flange-", "")))?.face ?? topFace
+                targetFace?.face ?? topFace,
+                targetFace?.uBasis ?? sortedPlanes[0]?.uBasis ?? [1, 0, 0],
+                targetFace?.vBasis ?? sortedPlanes[0]?.vBasis ?? [0, 1, 0]
               );
           node.geometry.width  = dims.width;
           node.geometry.height = dims.height;
@@ -812,7 +1569,7 @@ const api = {
         }
         enrichNode(tree.rootFlange);
 
-        const flatDims = computeFlatPatternDims(tree.rootFlange, thickness);
+        const flatDims = computeFlatPatternDims(tree.rootFlange, classified);
         if (flatDims.width > 0)  flatWidth  = flatDims.width;
         if (flatDims.height > 0) flatHeight = flatDims.height;
       }
@@ -864,4 +1621,5 @@ const api = {
 
 export type GeometryWorkerAPI = typeof api;
 Comlink.expose(api);
+
 
