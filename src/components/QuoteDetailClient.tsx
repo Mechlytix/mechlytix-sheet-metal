@@ -233,6 +233,36 @@ export function QuoteDetailClient({
   const [expiresAt, setExpiresAt] = useState(quote.expires_at ? quote.expires_at.slice(0, 10) : "");
   const [notes, setNotes] = useState(quote.notes ?? "");
 
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    let url: string | null = null;
+
+    async function loadPdf() {
+      if (activeQuote.input_type === "pdf" && activeQuote.uploads?.storage_path) {
+        const supabase = createClient();
+        const { data, error } = await supabase.storage
+          .from("step-files")
+          .download(activeQuote.uploads.storage_path);
+        if (data && !error && active) {
+          url = URL.createObjectURL(data);
+          setPdfUrl(url);
+        }
+      } else {
+        setPdfUrl(null);
+      }
+    }
+    loadPdf();
+
+    return () => {
+      active = false;
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, [activeQuote]);
+
   // ── Sync part-specific state when switching parts ──
   React.useEffect(() => {
     const q = batchQuotes[activePartIndex] || quote;
@@ -574,11 +604,23 @@ export function QuoteDetailClient({
             )}
 
             {/* Viewer + side panel split */}
-            {(activeDxf || activeQuote.input_type === "dxf") ? (
+            {(activeDxf || activeQuote.input_type === "dxf" || activeQuote.input_type === "pdf") ? (
               <div className="viewer-split">
-                {/* DXF Viewer */}
+                {/* DXF or PDF Viewer */}
                 <div className="viewer-split-viewer no-print">
-                  {activeDxf ? (
+                  {activeQuote.input_type === "pdf" && pdfUrl ? (
+                    <iframe
+                      src={pdfUrl}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        border: "none",
+                        background: "var(--bg-secondary)",
+                        borderRadius: "8px",
+                      }}
+                      title="PDF Drawing Preview"
+                    />
+                  ) : activeDxf ? (
                     <DxfViewer
                       geometry={effectiveGeometry || activeDxf}
                       layerIntents={layerIntents}
@@ -589,7 +631,7 @@ export function QuoteDetailClient({
                     />
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-dim)' }}>
-                      No DXF preview available
+                      No preview available
                     </div>
                   )}
                 </div>

@@ -40,7 +40,7 @@ export interface DXFData {
 /** Geometry extracted from a STEP or DXF file */
 export interface PricingGeometry {
   /** Source format */
-  inputType: "step" | "dxf";
+  inputType: "step" | "dxf" | "pdf";
   /** Flat pattern bounding box dimensions (mm) */
   boundingWidth: number;
   boundingHeight: number;

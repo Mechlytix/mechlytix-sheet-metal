@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -90,7 +90,7 @@ function DropZone({
         ref={inputRef}
         type="file"
         multiple
-        accept=".step,.stp,.dxf"
+        accept=".step,.stp,.dxf,.pdf"
         style={{ display: "none" }}
         onChange={(e) => { 
           const f = e.target.files; 
@@ -275,6 +275,17 @@ export default function QuoterPage() {
   const [defaultMarkup, setDefaultMarkup]         = useState(15);
 
   const [result, setResult] = useState<PricingResult | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeItem?.sourceFile && activeItem.geometry.inputType === "pdf") {
+      const url = URL.createObjectURL(activeItem.sourceFile);
+      setPdfUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setPdfUrl(null);
+    }
+  }, [activeItem]);
 
   // â”€â”€ Nesting state â”€â”€
   const [ribbonTab, setRibbonTab] = useState<"part" | "nesting" | "pricing">("part");
@@ -551,12 +562,55 @@ export default function QuoterPage() {
     try {
       for (const file of files) {
         const ext = file.name.split(".").pop()?.toLowerCase();
-        if (!ext || !["step", "stp", "dxf"].includes(ext)) continue;
+        if (!ext || !["step", "stp", "dxf", "pdf"].includes(ext)) continue;
 
         let geo: PricingGeometry;
         const initialIntents: Record<string, DXFIntent> = {};
+        let quantityOverride = 1;
+        let materialIdOverride = defaultMaterialId;
 
-        if (ext === "dxf") {
+        if (ext === "pdf") {
+          const formData = new FormData();
+          formData.append("file", file);
+          const response = await fetch("/api/parse-pdf", {
+            method: "POST",
+            body: formData,
+          });
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to parse PDF: ${errorText}`);
+          }
+          const data = await response.json();
+          if (data.error) {
+            throw new Error(data.error);
+          }
+
+          // Try to match material from materials list
+          if (data.material) {
+            const matched = materials.find(m => 
+              m.name.toLowerCase().includes(data.material.toLowerCase()) ||
+              data.material.toLowerCase().includes(m.name.toLowerCase())
+            );
+            if (matched) materialIdOverride = matched.id;
+          }
+          
+          if (data.quantity && data.quantity > 0) {
+            quantityOverride = data.quantity;
+          }
+
+          geo = {
+            inputType: "pdf",
+            boundingWidth: data.boundingWidth || 0,
+            boundingHeight: data.boundingHeight || 0,
+            partArea: (data.boundingWidth || 0) * (data.boundingHeight || 0),
+            perimeter: 2 * ((data.boundingWidth || 0) + (data.boundingHeight || 0)),
+            pierceCount: 0,
+            bendCount: data.bendCount || 0,
+            bendAngles: [],
+            thickness: data.thickness || 0,
+            thicknessConfidence: data.thickness ? "detected" : "required",
+          };
+        } else if (ext === "dxf") {
           const text = await file.text();
           geo = parseDXFGeometry(text);
           if (geo.dxfData) geo.dxfData.layers.forEach(l => { initialIntents[l.name] = l.intent || "cut"; });
@@ -576,8 +630,8 @@ export default function QuoterPage() {
 
         newItems.push({
           id: Math.random().toString(36).substr(2, 9), filename: file.name, geometry: geo, sourceFile: file,
-          materialId: defaultMaterialId, machineId: defaultMachineId, thickness: geo.thickness || 0,
-          quantity: 1, markup: defaultMarkup, layerIntents: initialIntents, pathIntents: {},
+          materialId: materialIdOverride, machineId: defaultMachineId, thickness: geo.thickness || 0,
+          quantity: quantityOverride, markup: defaultMarkup, layerIntents: initialIntents, pathIntents: {},
           manualBendCount: null, leadTime: "7-10 Days", priceBreaks: []
         });
       }
@@ -592,7 +646,7 @@ export default function QuoterPage() {
       alert(`Error analysing files: ${err instanceof Error ? err.message : String(err)}`);
       setPhase({ name: "idle" });
     }
-  }, [defaultMaterialId, defaultMachineId, defaultMarkup]);
+  }, [defaultMaterialId, defaultMachineId, defaultMarkup, materials]);
 
   const handleSave = useCallback(async (contactId: string, companyId: string, notes: string) => {
     if (phase.name !== "ready" || items.length === 0 || !userId) return;
@@ -638,7 +692,11 @@ export default function QuoterPage() {
             const { data: dbUpload } = await supabase.from("uploads").insert({
               user_id: userId, filename: item.sourceFile.name, storage_path: path,
               file_size_bytes: item.sourceFile.size,
-              file_type: item.sourceFile.name.toLowerCase().endsWith(".dxf") ? "dxf" : "step",
+              file_type: item.sourceFile.name.toLowerCase().endsWith(".dxf")
+                ? "dxf"
+                : item.sourceFile.name.toLowerCase().endsWith(".pdf")
+                ? "pdf"
+                : "step",
               status: "completed"
             }).select("id").single();
             if (dbUpload) uploadId = dbUpload.id;
@@ -792,14 +850,28 @@ export default function QuoterPage() {
             {ribbonTab === "part" && (
               <div className="quoter-tab-body">
                 <div className="quoter-centre">
-                  <DxfViewer
-                    geometry={activeItem.geometry}
-                    layerIntents={activeItem.layerIntents}
-                    pathIntents={activeItem.pathIntents}
-                    onPathIntentChange={(pid, intent) =>
-                      updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: intent } })
-                    }
-                  />
+                  {activeItem.geometry.inputType === "pdf" && pdfUrl ? (
+                    <iframe
+                      src={pdfUrl}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        border: "none",
+                        background: "var(--bg-secondary)",
+                        borderRadius: "8px",
+                      }}
+                      title="PDF Drawing Preview"
+                    />
+                  ) : (
+                    <DxfViewer
+                      geometry={activeItem.geometry}
+                      layerIntents={activeItem.layerIntents}
+                      pathIntents={activeItem.pathIntents}
+                      onPathIntentChange={(pid, intent) =>
+                        updateActiveItem({ pathIntents: { ...activeItem.pathIntents, [pid]: intent } })
+                      }
+                    />
+                  )}
                 </div>
                 <div className="quoter-panel">
                   <div className="qrd-content">
