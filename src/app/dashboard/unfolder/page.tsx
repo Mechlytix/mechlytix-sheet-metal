@@ -186,10 +186,10 @@ export default function DashboardPage() {
       {/* Viewport Wrapper */}
       <div className="viewport-wrapper relative">
         {/* Segmented Control Toggle between 3D and 2D */}
-        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-[#1a1d21]/95 border border-white/10 p-1 rounded-xl flex shadow-xl backdrop-blur-md z-40">
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-[#1a1d21]/95 border border-white/10 p-1 rounded-xl flex gap-1 shadow-xl backdrop-blur-md z-40">
           <button
             onClick={() => setViewMode("3d")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer whitespace-nowrap ${
               viewMode === "3d"
                 ? "bg-[#ff6600] text-white shadow-md shadow-[#ff6600]/20 font-bold"
                 : "text-white/60 hover:text-white hover:bg-white/5"
@@ -199,7 +199,7 @@ export default function DashboardPage() {
           </button>
           <button
             onClick={() => setViewMode("2d")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer whitespace-nowrap ${
               viewMode === "2d"
                 ? "bg-[#ff6600] text-white shadow-md shadow-[#ff6600]/20 font-bold"
                 : "text-white/60 hover:text-white hover:bg-white/5"
@@ -224,7 +224,7 @@ export default function DashboardPage() {
             </R3FViewport>
           </div>
         ) : (
-          <div className="viewport-container w-full h-full relative p-4 pt-16 flex flex-col">
+          <div className="w-full h-full relative p-4 pt-16 flex flex-col bg-[#0e1012] z-0">
             {flatGeometryLoading ? (
               <div className="dxf-viewer-empty h-full w-full flex items-center justify-center bg-[#0e1012] border border-white/10 rounded-xl">
                 <div className="flex flex-col items-center gap-3 text-white/50">

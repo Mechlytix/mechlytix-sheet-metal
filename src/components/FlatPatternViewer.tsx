@@ -52,16 +52,157 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
   const [dragMoved, setDragMoved] = useState(false);
   const [lastPt, setLastPt] = useState({ x: 0, y: 0 });
 
-  // Handle Pan
+  // Measurement state
+  const [measureMode, setMeasureMode] = useState(false);
+  const [startMeasurePt, setStartMeasurePt] = useState<{ x: number; y: number } | null>(null);
+  const [hoverPt, setHoverPt] = useState<{
+    x: number;
+    y: number;
+    snappedX: number;
+    snappedY: number;
+    label?: string;
+    isSnapped: boolean;
+  } | null>(null);
+  const [customDimensions, setCustomDimensions] = useState<Array<{
+    id: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    distance: number;
+  }>>([]);
+
+  // Keyboard shortcut to escape measurement
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (startMeasurePt) {
+          setStartMeasurePt(null);
+        } else if (measureMode) {
+          setMeasureMode(false);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [startMeasurePt, measureMode]);
+
+  // Pre-calculate Snap Points in SVG space
+  const snapPoints = useMemo(() => {
+    if (!geometry) return [];
+    const points: Array<{ x: number; y: number; label: string }> = [];
+    const seen = new Set<string>();
+
+    const addPoint = (x: number, y: number, label: string) => {
+      const key = `${x.toFixed(3)},${y.toFixed(3)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        points.push({ x, y, label });
+      }
+    };
+
+    // Lines
+    geometry.lines.forEach((line) => {
+      if (!visibleLayers[line.layer]) return;
+      addPoint(line.x1, height - line.y1, "Endpoint");
+      addPoint(line.x2, height - line.y2, "Endpoint");
+    });
+
+    // Arcs
+    geometry.arcs.forEach((arc) => {
+      if (!visibleLayers[arc.layer]) return;
+      const startAngleRad = (arc.startAngle * Math.PI) / 180;
+      const endAngleRad = (arc.endAngle * Math.PI) / 180;
+      
+      const x1 = arc.cx + arc.r * Math.cos(startAngleRad);
+      const y1 = height - (arc.cy + arc.r * Math.sin(startAngleRad));
+      const x2 = arc.cx + arc.r * Math.cos(endAngleRad);
+      const y2 = height - (arc.cy + arc.r * Math.sin(endAngleRad));
+      const cx = arc.cx;
+      const cy = height - arc.cy;
+
+      addPoint(x1, y1, "Endpoint");
+      addPoint(x2, y2, "Endpoint");
+      addPoint(cx, cy, "Center");
+    });
+
+    // Circles
+    geometry.circles.forEach((circle) => {
+      if (!visibleLayers[circle.layer]) return;
+      addPoint(circle.cx, height - circle.cy, "Center");
+    });
+
+    return points;
+  }, [geometry, visibleLayers, height]);
+
+  // Convert client coords to SVG space with snapping
+  const getSnappedPoint = (clientX: number, clientY: number) => {
+    if (!svgRef.current) return null;
+    const rect = svgRef.current.getBoundingClientRect();
+    const xNorm = (clientX - rect.left) / rect.width;
+    const yNorm = (clientY - rect.top) / rect.height;
+    const svgX = vb.x + xNorm * vb.w;
+    const svgY = vb.y + yNorm * vb.h;
+
+    const thresholdSVG = 15 * (vb.w / rect.width);
+    let closestDist = thresholdSVG;
+    let closestPoint: { x: number; y: number; label: string } | null = null;
+
+    for (const pt of snapPoints) {
+      const dist = Math.hypot(pt.x - svgX, pt.y - svgY);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestPoint = pt;
+      }
+    }
+
+    return {
+      svgX,
+      svgY,
+      snapped: closestPoint ? { x: closestPoint.x, y: closestPoint.y, label: closestPoint.label } : null
+    };
+  };
+
+  // Pointer event handlers
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (e.button !== 0) return; // Left click only
-    setIsDragging(true);
-    setDragMoved(false);
-    setLastPt({ x: e.clientX, y: e.clientY });
-    e.currentTarget.setPointerCapture(e.pointerId);
+    if (measureMode) {
+      if (e.button === 0) {
+        // Left click is reserved for starting/completing measurements
+        return;
+      }
+      // Right (2) or Middle (1) click starts panning
+      if (e.button === 1 || e.button === 2) {
+        setIsDragging(true);
+        setDragMoved(false);
+        setLastPt({ x: e.clientX, y: e.clientY });
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+    } else {
+      if (e.button !== 0) return; // Left click only for panning in normal mode
+      setIsDragging(true);
+      setDragMoved(false);
+      setLastPt({ x: e.clientX, y: e.clientY });
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (measureMode) {
+      const snapResult = getSnappedPoint(e.clientX, e.clientY);
+      if (snapResult) {
+        setHoverPt({
+          x: snapResult.svgX,
+          y: snapResult.svgY,
+          snappedX: snapResult.snapped ? snapResult.snapped.x : snapResult.svgX,
+          snappedY: snapResult.snapped ? snapResult.snapped.y : snapResult.svgY,
+          label: snapResult.snapped ? snapResult.snapped.label : undefined,
+          isSnapped: !!snapResult.snapped,
+        });
+      }
+    } else {
+      if (hoverPt) setHoverPt(null);
+    }
+
     if (!isDragging) return;
     const dx = e.clientX - lastPt.x;
     const dy = e.clientY - lastPt.y;
@@ -86,7 +227,40 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
     if (isDragging) {
       setIsDragging(false);
       e.currentTarget.releasePointerCapture(e.pointerId);
+      return;
     }
+
+    if (measureMode && e.button === 0) {
+      const snapResult = getSnappedPoint(e.clientX, e.clientY);
+      if (snapResult) {
+        const clickedPt = {
+          x: snapResult.snapped ? snapResult.snapped.x : snapResult.svgX,
+          y: snapResult.snapped ? snapResult.snapped.y : snapResult.svgY,
+        };
+
+        if (!startMeasurePt) {
+          setStartMeasurePt(clickedPt);
+        } else {
+          const distance = Math.hypot(clickedPt.x - startMeasurePt.x, clickedPt.y - startMeasurePt.y);
+          setCustomDimensions((prev) => [
+            ...prev,
+            {
+              id: `dim-${Date.now()}-${Math.random()}`,
+              x1: startMeasurePt.x,
+              y1: startMeasurePt.y,
+              x2: clickedPt.x,
+              y2: clickedPt.y,
+              distance,
+            },
+          ]);
+          setStartMeasurePt(null);
+        }
+      }
+    }
+  };
+
+  const handlePointerLeave = () => {
+    setHoverPt(null);
   };
 
   // Handle Zoom (Wheel) — zoom toward cursor position
@@ -277,13 +451,17 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
         <svg
           ref={svgRef}
           viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
-          className="dxf-viewer-svg w-full h-full cursor-grab active:cursor-grabbing"
+          className={`dxf-viewer-svg w-full h-full ${
+            measureMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"
+          }`}
           style={{ touchAction: "none" }}
           preserveAspectRatio="xMidYMid meet"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
+          onPointerLeave={handlePointerLeave}
+          onContextMenu={(e) => e.preventDefault()}
         >
           {/* SVG Definitions for Arrow Markers */}
           <defs>
@@ -463,11 +641,160 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
               {height.toFixed(1)} mm
             </text>
           </g>
+
+          {/* Render Completed Custom Measurements */}
+          {customDimensions.map((dim) => {
+            const midX = (dim.x1 + dim.x2) / 2;
+            const midY = (dim.y1 + dim.y2) / 2;
+            const label = `${dim.distance.toFixed(1)} mm`;
+            const fontSize = Math.max(3.0, strokeWidthMultiplier * 9);
+            const textW = fontSize * 0.6 * label.length;
+            const textH = fontSize * 1.3;
+            const rectX = midX - textW / 2;
+            const rectY = midY - textH / 2;
+
+            return (
+              <g key={dim.id} className="custom-dimension">
+                {/* Dashed line */}
+                <line
+                  x1={dim.x1}
+                  y1={dim.y1}
+                  x2={dim.x2}
+                  y2={dim.y2}
+                  stroke="#f43f5e"
+                  strokeWidth={Math.max(0.5, strokeWidthMultiplier * 1.2)}
+                  strokeDasharray={`${strokeWidthMultiplier * 4},${strokeWidthMultiplier * 2}`}
+                />
+                {/* End Ticks */}
+                <circle cx={dim.x1} cy={dim.y1} r={strokeWidthMultiplier * 2} fill="#f43f5e" />
+                <circle cx={dim.x2} cy={dim.y2} r={strokeWidthMultiplier * 2} fill="#f43f5e" />
+                {/* Backdrop Rect */}
+                <rect
+                  x={rectX}
+                  y={rectY}
+                  width={textW}
+                  height={textH}
+                  rx={strokeWidthMultiplier * 1.5}
+                  ry={strokeWidthMultiplier * 1.5}
+                  fill="#0e1012"
+                  stroke="#f43f5e"
+                  strokeWidth={Math.max(0.3, strokeWidthMultiplier * 0.6)}
+                />
+                {/* Text Label */}
+                <text
+                  x={midX}
+                  y={midY}
+                  fontSize={fontSize}
+                  fontFamily="var(--font-mono, monospace)"
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fill="#f43f5e"
+                  fontWeight="bold"
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Render Live Measurement Guideline */}
+          {measureMode && startMeasurePt && hoverPt && (
+            <g className="live-guideline">
+              {/* Dashed line */}
+              <line
+                x1={startMeasurePt.x}
+                y1={startMeasurePt.y}
+                x2={hoverPt.snappedX}
+                y2={hoverPt.snappedY}
+                stroke="#f43f5e"
+                strokeWidth={Math.max(0.5, strokeWidthMultiplier * 1.2)}
+                strokeDasharray={`${strokeWidthMultiplier * 4},${strokeWidthMultiplier * 2}`}
+                opacity={0.7}
+              />
+              {/* Start point tick */}
+              <circle cx={startMeasurePt.x} cy={startMeasurePt.y} r={strokeWidthMultiplier * 2} fill="#f43f5e" />
+              
+              {/* End point tick */}
+              <circle cx={hoverPt.snappedX} cy={hoverPt.snappedY} r={strokeWidthMultiplier * 2} fill="#f43f5e" />
+
+              {/* Live distance text badge */}
+              {(() => {
+                const midX = (startMeasurePt.x + hoverPt.snappedX) / 2;
+                const midY = (startMeasurePt.y + hoverPt.snappedY) / 2;
+                const dist = Math.hypot(hoverPt.snappedX - startMeasurePt.x, hoverPt.snappedY - startMeasurePt.y);
+                const label = `${dist.toFixed(1)} mm`;
+                const fontSize = Math.max(3.0, strokeWidthMultiplier * 9);
+                const textW = fontSize * 0.6 * label.length;
+                const textH = fontSize * 1.3;
+                const rectX = midX - textW / 2;
+                const rectY = midY - textH / 2;
+
+                return (
+                  <>
+                    <rect
+                      x={rectX}
+                      y={rectY}
+                      width={textW}
+                      height={textH}
+                      rx={strokeWidthMultiplier * 1.5}
+                      ry={strokeWidthMultiplier * 1.5}
+                      fill="#0e1012"
+                      stroke="#f43f5e"
+                      strokeWidth={Math.max(0.3, strokeWidthMultiplier * 0.6)}
+                      strokeDasharray={`${strokeWidthMultiplier * 2},${strokeWidthMultiplier * 1}`}
+                      opacity={0.8}
+                    />
+                    <text
+                      x={midX}
+                      y={midY}
+                      fontSize={fontSize}
+                      fontFamily="var(--font-mono, monospace)"
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill="#f43f5e"
+                      fontWeight="bold"
+                      opacity={0.9}
+                    >
+                      {label}
+                    </text>
+                  </>
+                );
+              })()}
+            </g>
+          )}
+
+          {/* Render Snap Indicator */}
+          {measureMode && hoverPt && hoverPt.isSnapped && (
+            <g className="snap-indicator">
+              {/* Snap box */}
+              <rect
+                x={hoverPt.snappedX - (strokeWidthMultiplier * 4)}
+                y={hoverPt.snappedY - (strokeWidthMultiplier * 4)}
+                width={strokeWidthMultiplier * 8}
+                height={strokeWidthMultiplier * 8}
+                fill="none"
+                stroke="#f43f5e"
+                strokeWidth={Math.max(0.5, strokeWidthMultiplier * 1.2)}
+              />
+              {/* Snap classification text label */}
+              <text
+                x={hoverPt.snappedX + (strokeWidthMultiplier * 6)}
+                y={hoverPt.snappedY}
+                fontSize={Math.max(3.0, strokeWidthMultiplier * 8)}
+                fontFamily="var(--font-mono, monospace)"
+                fill="#f43f5e"
+                fontWeight="bold"
+                dominantBaseline="central"
+              >
+                {hoverPt.label}
+              </text>
+            </g>
+          )}
         </svg>
       </div>
 
       {/* Floating Legend Layer Toggle Panel */}
-      <div className="absolute bottom-4 right-4 bg-[#1a1d21]/95 border border-white/10 p-4 rounded-xl shadow-2xl backdrop-blur-md z-10 w-64 flex flex-col gap-3">
+      <div className="absolute bottom-4 right-4 bg-[#1a1d21]/95 border border-white/10 p-4 rounded-xl shadow-2xl backdrop-blur-md z-10 w-72 sm:w-80 min-w-72 max-w-sm flex flex-col gap-3 flex-shrink-0">
         <div className="text-xs font-semibold text-white/90 border-b border-white/5 pb-2">
           Layer Visibility
         </div>
@@ -479,7 +806,7 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
                 key={layer}
                 className="flex items-center justify-between text-xs cursor-pointer hover:bg-white/5 p-1 px-1.5 rounded transition-colors"
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 flex-shrink-0">
                   <input
                     type="checkbox"
                     checked={visibleLayers[layer]}
@@ -489,19 +816,19 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
                         [layer]: e.target.checked,
                       }))
                     }
-                    className="w-3.5 h-3.5 rounded border-white/20 bg-[#111315] text-[#ff6600] focus:ring-[#ff6600]/50 focus:ring-offset-[#1a1d21]"
+                    className="w-3.5 h-3.5 rounded border-white/20 bg-[#111315] text-[#ff6600] focus:ring-[#ff6600]/50 focus:ring-offset-[#1a1d21] flex-shrink-0"
                   />
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <span
-                      className="w-2.5 h-2.5 rounded-full"
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                       style={{ backgroundColor: getLayerColor(layer) }}
                     />
-                    <span className="text-white/80 font-medium">
+                    <span className="text-white/80 font-medium whitespace-nowrap">
                       {getLayerName(layer)}
                     </span>
                   </div>
                 </div>
-                <span className="text-[10px] text-white/45 font-mono bg-white/5 px-1.5 py-0.5 rounded">
+                <span className="text-[10px] text-white/45 font-mono bg-white/5 px-1.5 py-0.5 rounded flex-shrink-0">
                   {count}
                 </span>
               </label>
@@ -561,6 +888,42 @@ export function FlatPatternViewer({ geometry }: FlatPatternViewerProps) {
             <line x1="15" y1="3" x2="15" y2="21" />
           </svg>
         </button>
+        <div className="w-[1px] bg-white/10 self-stretch my-1" />
+        <button
+          onClick={() => {
+            setMeasureMode((m) => !m);
+            setStartMeasurePt(null);
+          }}
+          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors border cursor-pointer ${
+            measureMode
+              ? "bg-[#f43f5e]/25 text-[#f43f5e] border-[#f43f5e]/40"
+              : "bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border-white/5"
+          }`}
+          title="Measure Mode (Ruler)"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M21.3 9.7l-9.6 9.6-7.8-7.8 9.6-9.6z" />
+            <path d="M12.9 6.9l-1.4 1.4" />
+            <path d="M10.1 9.7L8.7 11.1" />
+            <path d="M7.3 12.5L5.9 13.9" />
+          </svg>
+        </button>
+        {customDimensions.length > 0 && (
+          <button
+            onClick={() => {
+              setCustomDimensions([]);
+              setStartMeasurePt(null);
+            }}
+            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-red-500/25 hover:text-red-400 hover:border-red-500/40 text-white/70 flex items-center justify-center transition-colors border border-white/5 cursor-pointer"
+            title="Clear Measurements"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M3 6h18" />
+              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Info Overlay badge */}
