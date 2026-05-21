@@ -28,7 +28,7 @@ import { calculateBendAllowance } from "../animation/bend-allowance";
 
 const THICKNESS = 2; // mm
 const DEFAULT_K_FACTOR = 0.446; // Mild Steel
-const BEND_RADIUS = 3; // mm inside radius
+const BEND_RADIUS = 0.1; // mm inside radius
 const BEND_ANGLE_DEG = 90;
 const BEND_ANGLE_RAD = Math.PI / 2;
 const DEPTH = 50; // mm (Z extent)
