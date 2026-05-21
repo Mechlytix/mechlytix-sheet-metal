@@ -18,6 +18,17 @@ interface UseGeometryWorkerReturn {
   rebuildTree: (kFactor: number, baseFlangeIdx?: number) => Promise<void>;
   /** Export the current flat pattern as a DXF string */
   exportDXF: (kFactor: number, baseFlangeIdx?: number) => Promise<string>;
+  /** Get the 2D geometry of the flat pattern */
+  getFlat2DGeometry: (
+    kFactor: number,
+    baseFlangeIdx?: number
+  ) => Promise<{
+    lines: any[];
+    arcs: any[];
+    circles: any[];
+    width: number;
+    height: number;
+  }>;
   /** Quick topology analysis (no unfold tree) */
   analyzeFile: (
     file: File
@@ -122,6 +133,23 @@ export function useGeometryWorker(): UseGeometryWorkerReturn {
     [getAPI]
   );
 
+  const getFlat2DGeometry = useCallback(
+    async (
+      kFactor: number,
+      baseFlangeIdx?: number
+    ): Promise<{
+      lines: any[];
+      arcs: any[];
+      circles: any[];
+      width: number;
+      height: number;
+    }> => {
+      const api = await getAPI();
+      return await api.getFlat2DGeometry(kFactor, baseFlangeIdx);
+    },
+    [getAPI]
+  );
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -131,5 +159,5 @@ export function useGeometryWorker(): UseGeometryWorkerReturn {
     };
   }, []);
 
-  return { status, error, parsedTree, parseFile, rebuildTree, exportDXF, analyzeFile, progressMessage };
+  return { status, error, parsedTree, parseFile, rebuildTree, exportDXF, getFlat2DGeometry, analyzeFile, progressMessage };
 }

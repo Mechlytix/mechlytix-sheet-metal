@@ -18,6 +18,8 @@ interface UnfoldControlsProps {
   onFileUpload?: (file: File) => void;
   workerStatus?: string;
   onExportDXF?: () => void;
+  viewMode?: "3d" | "2d";
+  onViewModeChange?: (mode: "3d" | "2d") => void;
 }
 
 export function UnfoldControls({
@@ -31,6 +33,8 @@ export function UnfoldControls({
   onFileUpload,
   workerStatus,
   onExportDXF,
+  viewMode = "3d",
+  onViewModeChange,
 }: UnfoldControlsProps) {
   const progressPercent = Math.round(state.progress * 100);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -101,17 +105,44 @@ export function UnfoldControls({
             </div>
           </div>
           {onExportDXF && (
-            <button
-              onClick={onExportDXF}
-              className="w-full mt-4 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold py-2 px-3 rounded transition-colors shadow-lg border border-blue-500/20 cursor-pointer"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              Export DXF Flat Pattern
-            </button>
+            <div className="flex flex-col gap-2 mt-4">
+              <button
+                onClick={onExportDXF}
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold py-2 px-3 rounded transition-colors shadow-lg border border-blue-500/20 cursor-pointer"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Export DXF Flat Pattern
+              </button>
+              {onViewModeChange && (
+                <button
+                  onClick={() => onViewModeChange(viewMode === "2d" ? "3d" : "2d")}
+                  className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 active:bg-white/15 text-white/80 hover:text-white text-xs font-semibold py-2 px-3 rounded transition-colors border border-white/10 cursor-pointer"
+                >
+                  {viewMode === "2d" ? (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                        <polyline points="2 17 12 22 22 17" />
+                        <polyline points="2 12 12 17 22 12" />
+                      </svg>
+                      Switch to 3D Viewer
+                    </>
+                  ) : (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      Preview Flat Pattern
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

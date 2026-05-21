@@ -1472,6 +1472,40 @@ const api = {
     return generateDXF(lines, arcs, circles);
   },
 
+  async getFlat2DGeometry(
+    kFactor: number,
+    baseFlangeIdx?: number
+  ): Promise<{
+    lines: DXFLine[];
+    arcs: DXFArc[];
+    circles: DXFCircle[];
+    width: number;
+    height: number;
+  }> {
+    if (!oc) await initialize();
+    if (!cachedShape || cachedClassified.length === 0 || !cachedAdjacency) {
+      throw new Error("No cached geometry. Please load a STEP file first.");
+    }
+    const tree = buildUnfoldTree(cachedClassified, cachedAdjacency, cachedShape, kFactor, baseFlangeIdx);
+    if (!tree) {
+      throw new Error("Could not rebuild unfold tree.");
+    }
+
+    const lines: DXFLine[] = [];
+    const arcs: DXFArc[] = [];
+    const circles: DXFCircle[] = [];
+
+    traverseTreeForDXF(tree.rootFlange, cachedClassified, lines, arcs, circles);
+
+    return {
+      lines,
+      arcs,
+      circles,
+      width: tree.metadata.flatPatternDimensions.width,
+      height: tree.metadata.flatPatternDimensions.height,
+    };
+  },
+
   /** Extract geometry data needed for pricing, from a STEP file */
   async extractPricingGeometry(
     fileBuffer: ArrayBuffer,

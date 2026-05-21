@@ -276,3 +276,59 @@ export function generateMockDXF(activePartId: string, kFactor = DEFAULT_K_FACTOR
   return dxf;
 }
 
+export function getMockFlatPatternGeometry(
+  activePartId: string,
+  kFactor = DEFAULT_K_FACTOR
+): {
+  lines: Array<{ x1: number; y1: number; x2: number; y2: number; layer: string }>;
+  arcs: any[];
+  circles: any[];
+  width: number;
+  height: number;
+} {
+  const ba = calculateBendAllowance(
+    BEND_ANGLE_DEG,
+    BEND_RADIUS,
+    kFactor,
+    THICKNESS
+  );
+
+  let w = 0;
+  const h = DEPTH;
+  const lines: Array<{ x1: number; y1: number; x2: number; y2: number; layer: string }> = [];
+
+  if (activePartId === "u-channel") {
+    w = 40 + ba + 80 + ba + 40;
+
+    // Outer boundaries
+    lines.push({ x1: 0, y1: 0, x2: w, y2: 0, layer: "CUT_OUTER" });
+    lines.push({ x1: w, y1: 0, x2: w, y2: h, layer: "CUT_OUTER" });
+    lines.push({ x1: w, y1: h, x2: 0, y2: h, layer: "CUT_OUTER" });
+    lines.push({ x1: 0, y1: h, x2: 0, y2: 0, layer: "CUT_OUTER" });
+
+    // Bend centerlines
+    lines.push({ x1: 40 + ba / 2, y1: 0, x2: 40 + ba / 2, y2: h, layer: "BEND_DOWN" });
+    lines.push({ x1: 40 + ba + 80 + ba / 2, y1: 0, x2: 40 + ba + 80 + ba / 2, y2: h, layer: "BEND_UP" });
+  } else {
+    // default/l-bracket
+    w = 100 + ba + 60;
+
+    // Outer boundaries
+    lines.push({ x1: 0, y1: 0, x2: w, y2: 0, layer: "CUT_OUTER" });
+    lines.push({ x1: w, y1: 0, x2: w, y2: h, layer: "CUT_OUTER" });
+    lines.push({ x1: w, y1: h, x2: 0, y2: h, layer: "CUT_OUTER" });
+    lines.push({ x1: 0, y1: h, x2: 0, y2: 0, layer: "CUT_OUTER" });
+
+    // Bend centerline
+    lines.push({ x1: 100 + ba / 2, y1: 0, x2: 100 + ba / 2, y2: h, layer: "BEND_UP" });
+  }
+
+  return {
+    lines,
+    arcs: [],
+    circles: [],
+    width: Math.round(w * 100) / 100,
+    height: h,
+  };
+}
+

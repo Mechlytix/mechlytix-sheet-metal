@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useUnfoldAnimation } from "@/hooks/useUnfoldAnimation";
 import { useGeometryWorker } from "@/hooks/useGeometryWorker";
 import { UnfoldControls } from "@/components/UnfoldControls";
 import { ViewToolbar } from "@/components/ViewToolbar";
-import { createLBracketMock, createUChannelMock, generateMockDXF } from "@/lib/mock/mock-parts";
+import { createLBracketMock, createUChannelMock, generateMockDXF, getMockFlatPatternGeometry } from "@/lib/mock/mock-parts";
 import { MaterialPreset, MATERIAL_PRESETS, UnfoldTree } from "@/lib/types/unfold";
+import { FlatPatternViewer } from "@/components/FlatPatternViewer";
 
 // Dynamic import — R3F must not SSR
 const R3FViewport = dynamic(
@@ -30,6 +31,9 @@ export default function DashboardPage() {
   );
   const [dataSource, setDataSource] = useState<DataSource>("mock");
   const [baseFlangeIdx, setBaseFlangeIdx] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
+  const [flatGeometry, setFlatGeometry] = useState<any>(null);
+  const [flatGeometryLoading, setFlatGeometryLoading] = useState(false);
   
   const [viewState, setViewState] = useState({
     wireframe: false,
@@ -52,6 +56,30 @@ export default function DashboardPage() {
     ? worker.parsedTree
     : mockTree;
 
+  // Load flat 2D geometry when switching to 2D view
+  useEffect(() => {
+    if (viewMode !== "2d") return;
+
+    if (dataSource === "mock") {
+      const geom = getMockFlatPatternGeometry(activePartId, selectedMaterial.kFactor);
+      setFlatGeometry(geom);
+      setFlatGeometryLoading(false);
+    } else {
+      setFlatGeometryLoading(true);
+      worker
+        .getFlat2DGeometry(selectedMaterial.kFactor, baseFlangeIdx !== null ? baseFlangeIdx : undefined)
+        .then((geom) => {
+          setFlatGeometry(geom);
+          setFlatGeometryLoading(false);
+        })
+        .catch((err) => {
+          console.error("Failed to load flat geometry:", err);
+          setFlatGeometry(null);
+          setFlatGeometryLoading(false);
+        });
+    }
+  }, [viewMode, dataSource, activePartId, selectedMaterial.kFactor, baseFlangeIdx, worker]);
+
   const handleMaterialChange = useCallback(
     (preset: MaterialPreset) => {
       setSelectedMaterial(preset);
@@ -71,6 +99,7 @@ export default function DashboardPage() {
       setActivePartId(partId);
       setDataSource("mock");
       setBaseFlangeIdx(null);
+      setViewMode("3d"); // switch back to 3D when changing parts
       controls.reset();
     },
     [controls]
@@ -80,6 +109,7 @@ export default function DashboardPage() {
     async (file: File) => {
       controls.reset();
       setBaseFlangeIdx(null);
+      setViewMode("3d");
       await worker.parseFile(file, selectedMaterial.kFactor);
       setDataSource("kernel");
     },
@@ -149,34 +179,75 @@ export default function DashboardPage() {
         onFileUpload={handleFileUpload}
         workerStatus={worker.status}
         onExportDXF={handleExportDXF}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
 
       {/* Viewport Wrapper */}
-      <div className="viewport-wrapper">
-        <div className="viewport-container">
-          <R3FViewport showGrid={viewState.showGrid}>
-            <SheetMetalModel
-              rootFlange={unfoldTree.rootFlange}
-              progressRef={progressRef}
-              material={selectedMaterial}
-              scale={modelScale}
-              wireframe={viewState.wireframe}
-              transparent={viewState.transparent}
-              onSelectBaseFlange={handleSelectBaseFlange}
-            />
-          </R3FViewport>
+      <div className="viewport-wrapper relative">
+        {/* Segmented Control Toggle between 3D and 2D */}
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-[#1a1d21]/95 border border-white/10 p-1 rounded-xl flex shadow-xl backdrop-blur-md z-40">
+          <button
+            onClick={() => setViewMode("3d")}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              viewMode === "3d"
+                ? "bg-[#ff6600] text-white shadow-md shadow-[#ff6600]/20 font-bold"
+                : "text-white/60 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            3D Viewer
+          </button>
+          <button
+            onClick={() => setViewMode("2d")}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              viewMode === "2d"
+                ? "bg-[#ff6600] text-white shadow-md shadow-[#ff6600]/20 font-bold"
+                : "text-white/60 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            2D Flat DXF
+          </button>
         </div>
 
+        {viewMode === "3d" ? (
+          <div className="viewport-container w-full h-full relative">
+            <R3FViewport showGrid={viewState.showGrid}>
+              <SheetMetalModel
+                rootFlange={unfoldTree.rootFlange}
+                progressRef={progressRef}
+                material={selectedMaterial}
+                scale={modelScale}
+                wireframe={viewState.wireframe}
+                transparent={viewState.transparent}
+                onSelectBaseFlange={handleSelectBaseFlange}
+              />
+            </R3FViewport>
+          </div>
+        ) : (
+          <div className="viewport-container w-full h-full relative p-4 pt-16 flex flex-col">
+            {flatGeometryLoading ? (
+              <div className="dxf-viewer-empty h-full w-full flex items-center justify-center bg-[#0e1012] border border-white/10 rounded-xl">
+                <div className="flex flex-col items-center gap-3 text-white/50">
+                  <div className="w-8 h-8 rounded-full border-2 border-white/10 border-t-[#ff6600] animate-spin" />
+                  <span>Computing flat 2D pattern...</span>
+                </div>
+              </div>
+            ) : (
+              <FlatPatternViewer geometry={flatGeometry} />
+            )}
+          </div>
+        )}
+
         {/* Base Flange Indicator */}
-        {dataSource === "kernel" && baseFlangeIdx !== null && (
-          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-[#1a1d21]/95 border border-white/10 px-4 py-2 rounded-full flex items-center gap-3 shadow-xl backdrop-blur-md z-40">
+        {dataSource === "kernel" && baseFlangeIdx !== null && viewMode === "3d" && (
+          <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-[#1a1d21]/95 border border-white/10 px-4 py-2 rounded-full flex items-center gap-3 shadow-xl backdrop-blur-md z-40">
             <span className="flex h-2 w-2 rounded-full bg-[#10b981] animate-pulse" />
             <span className="text-xs font-semibold text-white/90">
               Base Flange: Flange {baseFlangeIdx}
             </span>
             <button
               onClick={handleResetBaseFlange}
-              className="text-[10px] bg-white/10 hover:bg-white/20 text-white/70 hover:text-white px-2.5 py-0.5 rounded-full transition-colors font-medium border border-white/5"
+              className="text-[10px] bg-white/10 hover:bg-white/20 text-white/70 hover:text-white px-2.5 py-0.5 rounded-full transition-colors font-medium border border-white/5 cursor-pointer"
             >
               Reset
             </button>
@@ -204,17 +275,19 @@ export default function DashboardPage() {
         )}
 
         {/* Floating View Toolbar */}
-        <ViewToolbar
-          wireframe={viewState.wireframe}
-          onToggleWireframe={() => setViewState(s => ({ ...s, wireframe: !s.wireframe }))}
-          showGrid={viewState.showGrid}
-          onToggleGrid={() => setViewState(s => ({ ...s, showGrid: !s.showGrid }))}
-          transparent={viewState.transparent}
-          onToggleTransparent={() => setViewState(s => ({ ...s, transparent: !s.transparent }))}
-        />
+        {viewMode === "3d" && (
+          <ViewToolbar
+            wireframe={viewState.wireframe}
+            onToggleWireframe={() => setViewState(s => ({ ...s, wireframe: !s.wireframe }))}
+            showGrid={viewState.showGrid}
+            onToggleGrid={() => setViewState(s => ({ ...s, showGrid: !s.showGrid }))}
+            transparent={viewState.transparent}
+            onToggleTransparent={() => setViewState(s => ({ ...s, transparent: !s.transparent }))}
+          />
+        )}
 
         {/* Status Bar */}
-        <div className="status-bar">
+        <div className="status-bar z-10">
           <div className="status-left">
             <span className={`status-dot ${dataSource === "kernel" ? "kernel" : ""}`} />
             <span>
