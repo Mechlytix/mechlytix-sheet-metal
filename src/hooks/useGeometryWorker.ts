@@ -1,7 +1,33 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import type * as Comlink from "comlink";
 import type { UnfoldTree } from "@/lib/types/unfold";
+import type { GeometryWorkerAPI } from "@/lib/worker/geometry.worker";
+
+export interface FlatLine {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  layer: string;
+}
+
+export interface FlatArc {
+  cx: number;
+  cy: number;
+  r: number;
+  startAngle: number;
+  endAngle: number;
+  layer: string;
+}
+
+export interface FlatCircle {
+  cx: number;
+  cy: number;
+  r: number;
+  layer: string;
+}
 
 type WorkerStatus = "idle" | "initializing" | "parsing" | "ready" | "error";
 
@@ -23,9 +49,9 @@ interface UseGeometryWorkerReturn {
     kFactor: number,
     baseFlangeIdx?: number
   ) => Promise<{
-    lines: any[];
-    arcs: any[];
-    circles: any[];
+    lines: FlatLine[];
+    arcs: FlatArc[];
+    circles: FlatCircle[];
     width: number;
     height: number;
   }>;
@@ -36,6 +62,8 @@ interface UseGeometryWorkerReturn {
     faceCount: number;
     planeCount: number;
     cylinderCount: number;
+    otherCount?: number;
+    faces?: Array<{ index: number; type: string; area: number }>;
   } | null>;
   /** Loading progress message */
   progressMessage: string;
@@ -46,7 +74,7 @@ export function useGeometryWorker(): UseGeometryWorkerReturn {
   const [error, setError] = useState<string | null>(null);
   const [parsedTree, setParsedTree] = useState<UnfoldTree | null>(null);
   const [progressMessage, setProgressMessage] = useState("");
-  const apiRef = useRef<any>(null);
+  const apiRef = useRef<Comlink.Remote<GeometryWorkerAPI> | null>(null);
 
   // Lazy-load the worker API (only import when needed)
   const getAPI = useCallback(async () => {
@@ -72,14 +100,15 @@ export function useGeometryWorker(): UseGeometryWorkerReturn {
         const buffer = await file.arrayBuffer();
         const tree = await api.parseSTEP(buffer, kFactor);
 
-        setParsedTree(tree as UnfoldTree);
+        const parsed = tree as UnfoldTree;
+        setParsedTree(parsed);
         setStatus("ready");
         setProgressMessage(
-          `✓ ${(tree as any).metadata.totalFlanges} flanges, ${(tree as any).metadata.totalBends} bends detected`
+          `✓ ${parsed.metadata.totalFlanges} flanges, ${parsed.metadata.totalBends} bends detected`
         );
-      } catch (err: any) {
+      } catch (err) {
         setStatus("error");
-        setError(err?.message || "Unknown error during STEP parsing");
+        setError(err instanceof Error ? err.message : "Unknown error during STEP parsing");
         setProgressMessage("");
       }
     },
@@ -101,9 +130,9 @@ export function useGeometryWorker(): UseGeometryWorkerReturn {
         setProgressMessage(
           `✓ Unfold tree rebuilt around flange ${baseFlangeIdx}`
         );
-      } catch (err: any) {
+      } catch (err) {
         setStatus("error");
-        setError(err?.message || "Unknown error during tree rebuilding");
+        setError(err instanceof Error ? err.message : "Unknown error during tree rebuilding");
         setProgressMessage("");
       }
     },
@@ -117,7 +146,7 @@ export function useGeometryWorker(): UseGeometryWorkerReturn {
         await api.initialize();
         const buffer = await file.arrayBuffer();
         const result = await api.analyzeSTEP(buffer);
-        return result as any;
+        return result;
       } catch {
         return null;
       }
@@ -138,9 +167,9 @@ export function useGeometryWorker(): UseGeometryWorkerReturn {
       kFactor: number,
       baseFlangeIdx?: number
     ): Promise<{
-      lines: any[];
-      arcs: any[];
-      circles: any[];
+      lines: FlatLine[];
+      arcs: FlatArc[];
+      circles: FlatCircle[];
       width: number;
       height: number;
     }> => {

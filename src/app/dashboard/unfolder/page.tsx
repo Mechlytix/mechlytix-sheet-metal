@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useUnfoldAnimation } from "@/hooks/useUnfoldAnimation";
 import { useGeometryWorker } from "@/hooks/useGeometryWorker";
 import { UnfoldControls } from "@/components/UnfoldControls";
@@ -25,6 +26,7 @@ type DataSource = "mock" | "kernel";
 
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [activePartId, setActivePartId] = useState("l-bracket");
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialPreset>(
     MATERIAL_PRESETS[0]
@@ -55,6 +57,20 @@ export default function DashboardPage() {
   const unfoldTree: UnfoldTree = dataSource === "kernel" && worker.parsedTree
     ? worker.parsedTree
     : mockTree;
+
+  const handleSendToQuoter = useCallback(() => {
+    if (!unfoldTree) return;
+    const params = new URLSearchParams();
+    params.set("unfolded", "true");
+    params.set("filename", unfoldTree.metadata.partName);
+    params.set("width", String(unfoldTree.metadata.flatPatternDimensions.width));
+    params.set("height", String(unfoldTree.metadata.flatPatternDimensions.height));
+    params.set("thickness", String(unfoldTree.metadata.thickness));
+    params.set("bends", String(unfoldTree.metadata.totalBends));
+    params.set("material", selectedMaterial.name);
+
+    router.push(`/dashboard/quoter?${params.toString()}`);
+  }, [unfoldTree, selectedMaterial, router]);
 
   // Load flat 2D geometry when switching to 2D view
   useEffect(() => {
@@ -179,6 +195,7 @@ export default function DashboardPage() {
         onFileUpload={handleFileUpload}
         workerStatus={worker.status}
         onExportDXF={handleExportDXF}
+        onSendToQuoter={handleSendToQuoter}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />

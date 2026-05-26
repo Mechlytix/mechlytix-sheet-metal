@@ -89,6 +89,12 @@ export interface PricingInput {
   wasteFactor: number;
   /** Thickness override in mm (used when thicknessConfidence = 'required') */
   thicknessOverride?: number;
+  /** Secondary operations cost (deburring, powder coating, etc.) per part (£) */
+  secondaryOperationsCost?: number;
+  /** Assist gas type ("oxygen", "nitrogen", "air", "none") */
+  assistGasType?: string;
+  /** Assist gas cost per hour (£) */
+  assistGasCostPerHour?: number;
 }
 
 /** Detailed cost breakdown */
@@ -123,6 +129,10 @@ export interface PricingResult {
   markupPercent: number;
   /** Notes / warnings */
   warnings: string[];
+  /** Assist gas cost per part (£) */
+  assistGasCostPerPart?: number;
+  /** Secondary operations cost per part (£) */
+  secondaryOperationsCostPerPart?: number;
 }
 
 export interface PriceBreak {

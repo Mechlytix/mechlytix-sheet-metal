@@ -20,6 +20,7 @@ export default function QuotingSettingsPage() {
     default_markup_percent: "15",
     quote_expiry_days: "30",
     currency: "GBP" as Currency,
+    shop_floor_pin: "",
   });
 
   useEffect(() => {
@@ -36,14 +37,24 @@ export default function QuotingSettingsPage() {
         default_markup_percent: String(s.default_markup_percent),
         quote_expiry_days:      String(s.quote_expiry_days),
         currency:               (s.currency as Currency) ?? "GBP",
+        shop_floor_pin:         s.shop_floor_pin ?? "",
       });
       setLoading(false);
     }
     load();
   }, []);
 
+  const [pinError, setPinError] = useState("");
+
   async function save() {
     if (!userId) return;
+    const pin = defaults.shop_floor_pin.trim();
+    if (pin && !/^\d{4}$/.test(pin)) {
+      setPinError("PIN must be exactly 4 digits.");
+      return;
+    }
+    setPinError("");
+
     startTransition(async () => {
       const supabase = createClient();
       await supabase.from("user_settings").upsert({
@@ -51,6 +62,7 @@ export default function QuotingSettingsPage() {
         default_markup_percent: parseFloat(defaults.default_markup_percent) || 15,
         quote_expiry_days:     parseInt(defaults.quote_expiry_days) || 30,
         currency:              defaults.currency,
+        shop_floor_pin:         pin || null,
         updated_at:            new Date().toISOString(),
       });
       setCurrency(defaults.currency);
@@ -99,6 +111,25 @@ export default function QuotingSettingsPage() {
             <option value="EUR">EUR — Euro (€)</option>
             <option value="USD">USD — US Dollar ($)</option>
           </select>
+        </div>
+
+        <div className="form-field">
+          <label>Shop Floor Operator PIN</label>
+          <input
+            type="text"
+            maxLength={4}
+            placeholder="e.g. 1234 (Optional)"
+            value={defaults.shop_floor_pin}
+            onChange={(e) => {
+              const val = e.target.value.replace(/\D/g, "");
+              setDefaults((d) => ({ ...d, shop_floor_pin: val }));
+            }}
+            style={{ width: "120px", textAlign: "center", letterSpacing: "4px", fontSize: "16px", fontWeight: "bold" }}
+          />
+          {pinError && <p style={{ color: "#f87171", fontSize: 12, marginTop: 4 }}>{pinError}</p>}
+          <p style={{ fontSize: 12, color: "#888", marginTop: 4, lineHeight: 1.4 }}>
+            Set a 4-digit numeric code to authorize operators on the shop floor scan page when marking remnants as Consumed or Scrapped.
+          </p>
         </div>
 
         <button className="btn-primary" onClick={save}>

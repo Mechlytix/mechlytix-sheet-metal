@@ -57,14 +57,7 @@ interface PartInstance {
   instanceIndex: number;
 }
 
-interface PlacedPart {
-  inst: PartInstance;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  rotated: boolean;
-}
+
 
 // ─── Shared Helpers ─────────────────────────────────────
 
@@ -105,6 +98,117 @@ function tryOrientations(pw: number, ph: number, canRotate: boolean): Array<{ w:
   return orientations;
 }
 
+// ─── Parts-in-Parts (Hollow Region) Nesting Helpers ─────
+
+interface LocalHollow {
+  lx: number;
+  ly: number;
+  width: number;
+  height: number;
+}
+
+interface GlobalHollow {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function getPathBoundingBox(svgPath: string): { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } {
+  const commands = svgPath.split(/(?=[MLACZmlacz])/);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const cmd of commands) {
+    const args = cmd.substring(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
+    if (args.length >= 2) {
+      const x = args[args.length - 2];
+      const y = args[args.length - 1];
+      if (typeof x === "number" && typeof y === "number") {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  const width = maxX - minX;
+  const height = maxY - minY;
+  return {
+    minX, minY, maxX, maxY,
+    width: isFinite(width) ? width : 0,
+    height: isFinite(height) ? height : 0,
+  };
+}
+
+function getPartHollows(part: NestingPart, gap: number): LocalHollow[] {
+  if (!part.svgPaths || part.svgPaths.length <= 1) return [];
+
+  const boxes = part.svgPaths.map(p => {
+    const box = getPathBoundingBox(p);
+    const area = box.width * box.height;
+    return { box, area };
+  });
+
+  let maxArea = -1;
+  let outerIdx = 0;
+  for (let i = 0; i < boxes.length; i++) {
+    if (boxes[i].area > maxArea) {
+      maxArea = boxes[i].area;
+      outerIdx = i;
+    }
+  }
+
+  const hollows: LocalHollow[] = [];
+  const svgMinX = part.svgMinX ?? 0;
+  const svgMinY = part.svgMinY ?? 0;
+
+  for (let i = 0; i < boxes.length; i++) {
+    if (i === outerIdx) continue;
+    const { box } = boxes[i];
+    
+    // Safety clearance inside the hole
+    const safeW = box.width - 2 * gap;
+    const safeH = box.height - 2 * gap;
+
+    if (safeW > 0 && safeH > 0) {
+      hollows.push({
+        lx: box.minX - svgMinX + gap,
+        ly: box.minY - svgMinY + gap,
+        width: safeW,
+        height: safeH,
+      });
+    }
+  }
+
+  return hollows;
+}
+
+function getGlobalHollows(
+  placement: SheetPlacement,
+  originalWidth: number,
+  hollows: LocalHollow[]
+): GlobalHollow[] {
+  return hollows.map(h => {
+    if (!placement.rotated) {
+      return {
+        x: placement.x + h.lx,
+        y: placement.y + h.ly,
+        width: h.width,
+        height: h.height,
+      };
+    } else {
+      // Rotated 90°:
+      // rotatedLocalX = ly
+      // rotatedLocalY = originalWidth - (lx + width)
+      return {
+        x: placement.x + h.ly,
+        y: placement.y + (originalWidth - h.lx - h.width),
+        width: h.height,
+        height: h.width,
+      };
+    }
+  });
+}
+
 // ─── Algorithm 1: Shelf Best-Fit Decreasing ─────────────
 
 interface Shelf {
@@ -122,6 +226,7 @@ function packShelf(
   const sheets: SheetLayout[][] = [];
   let currentShelves: Shelf[] = [];
   let currentPlacements: SheetPlacement[] = [];
+  let currentHollows: GlobalHollow[] = [];
 
   function flush() {
     if (currentPlacements.length > 0) {
@@ -129,11 +234,11 @@ function packShelf(
     }
     currentShelves = [];
     currentPlacements = [];
+    currentHollows = [];
   }
 
   function tryPlace(inst: PartInstance, w: number, h: number, rotated: boolean): boolean {
     const partW = w + gap;
-    const partH = h + gap;
 
     // Best-fit: find shelf with smallest remaining space that fits
     let bestIdx = -1;
@@ -148,8 +253,14 @@ function packShelf(
     }
     if (bestIdx >= 0) {
       const s = currentShelves[bestIdx];
-      currentPlacements.push(makePlacement(inst, s.usedWidth, s.y, w, h, rotated));
+      const p = makePlacement(inst, s.usedWidth, s.y, w, h, rotated);
+      currentPlacements.push(p);
       s.usedWidth += partW;
+
+      const newHollows = getPartHollows(inst.part, gap);
+      if (newHollows.length > 0) {
+        currentHollows.push(...getGlobalHollows(p, inst.part.width, newHollows));
+      }
       return true;
     }
 
@@ -160,7 +271,13 @@ function packShelf(
 
     if (shelfY + h <= sheet.height + 0.01 && w <= sheet.width + 0.01) {
       currentShelves.push({ y: shelfY, height: h, usedWidth: partW });
-      currentPlacements.push(makePlacement(inst, 0, shelfY, w, h, rotated));
+      const p = makePlacement(inst, 0, shelfY, w, h, rotated);
+      currentPlacements.push(p);
+
+      const newHollows = getPartHollows(inst.part, gap);
+      if (newHollows.length > 0) {
+        currentHollows.push(...getGlobalHollows(p, inst.part.width, newHollows));
+      }
       return true;
     }
     return false;
@@ -168,6 +285,32 @@ function packShelf(
 
   for (const inst of instances) {
     let placed = false;
+
+    // 1. Try to nest inside existing hollow regions on the current sheet
+    for (let i = 0; i < currentHollows.length; i++) {
+      const h = currentHollows[i];
+      const orientations = tryOrientations(inst.part.width, inst.part.height, canRotate);
+      for (const o of orientations) {
+        if (o.w <= h.width + 0.01 && o.h <= h.height + 0.01) {
+          const px = h.x + (h.width - o.w) / 2;
+          const py = h.y + (h.height - o.h) / 2;
+          const p = makePlacement(inst, px, py, o.w, o.h, o.rotated);
+          currentPlacements.push(p);
+          currentHollows.splice(i, 1);
+
+          const newHollows = getPartHollows(inst.part, gap);
+          if (newHollows.length > 0) {
+            currentHollows.push(...getGlobalHollows(p, inst.part.width, newHollows));
+          }
+          placed = true;
+          break;
+        }
+      }
+      if (placed) break;
+    }
+    if (placed) continue;
+
+    // 2. Standard packing logic
     for (const { w, h, rotated } of tryOrientations(inst.part.width, inst.part.height, canRotate)) {
       if (tryPlace(inst, w, h, rotated)) { placed = true; break; }
     }
@@ -179,8 +322,14 @@ function packShelf(
       if (!placed) {
         // Part too big — force-place at origin
         const { w, h } = tryOrientations(inst.part.width, inst.part.height, canRotate)[0];
-        currentPlacements.push(makePlacement(inst, 0, 0, w, h, false));
+        const p = makePlacement(inst, 0, 0, w, h, false);
+        currentPlacements.push(p);
         currentShelves.push({ y: 0, height: h, usedWidth: w + gap });
+
+        const newHollows = getPartHollows(inst.part, gap);
+        if (newHollows.length > 0) {
+          currentHollows.push(...getGlobalHollows(p, inst.part.width, newHollows));
+        }
       }
     }
   }
@@ -202,6 +351,7 @@ function packGuillotine(
 
   let freeRects: FreeRect[] = [{ x: 0, y: 0, w: sheet.width, h: sheet.height }];
   let currentPlacements: SheetPlacement[] = [];
+  let currentHollows: GlobalHollow[] = [];
 
   function flush() {
     if (currentPlacements.length > 0) {
@@ -209,6 +359,7 @@ function packGuillotine(
     }
     freeRects = [{ x: 0, y: 0, w: sheet.width, h: sheet.height }];
     currentPlacements = [];
+    currentHollows = [];
   }
 
   function tryPlaceGuillotine(inst: PartInstance, pw: number, ph: number, rotated: boolean): boolean {
@@ -229,7 +380,13 @@ function packGuillotine(
     if (bestIdx < 0) return false;
 
     const fr = freeRects[bestIdx];
-    currentPlacements.push(makePlacement(inst, fr.x, fr.y, pw, ph, rotated));
+    const p = makePlacement(inst, fr.x, fr.y, pw, ph, rotated);
+    currentPlacements.push(p);
+
+    const newHollows = getPartHollows(inst.part, gap);
+    if (newHollows.length > 0) {
+      currentHollows.push(...getGlobalHollows(p, inst.part.width, newHollows));
+    }
 
     // Guillotine split: split the used rect into two new free rects
     // Choose longer axis for the first cut (maximises larger free rect)
@@ -258,6 +415,32 @@ function packGuillotine(
 
   for (const inst of instances) {
     let placed = false;
+
+    // 1. Try to nest inside existing hollow regions on the current sheet
+    for (let i = 0; i < currentHollows.length; i++) {
+      const h = currentHollows[i];
+      const orientations = tryOrientations(inst.part.width, inst.part.height, canRotate);
+      for (const o of orientations) {
+        if (o.w <= h.width + 0.01 && o.h <= h.height + 0.01) {
+          const px = h.x + (h.width - o.w) / 2;
+          const py = h.y + (h.height - o.h) / 2;
+          const p = makePlacement(inst, px, py, o.w, o.h, o.rotated);
+          currentPlacements.push(p);
+          currentHollows.splice(i, 1);
+
+          const newHollows = getPartHollows(inst.part, gap);
+          if (newHollows.length > 0) {
+            currentHollows.push(...getGlobalHollows(p, inst.part.width, newHollows));
+          }
+          placed = true;
+          break;
+        }
+      }
+      if (placed) break;
+    }
+    if (placed) continue;
+
+    // 2. Standard pack
     for (const { w, h, rotated } of tryOrientations(inst.part.width, inst.part.height, canRotate)) {
       if (tryPlaceGuillotine(inst, w, h, rotated)) { placed = true; break; }
     }
@@ -268,7 +451,13 @@ function packGuillotine(
       }
       if (!placed) {
         const { w, h } = tryOrientations(inst.part.width, inst.part.height, canRotate)[0];
-        currentPlacements.push(makePlacement(inst, 0, 0, w, h, false));
+        const p = makePlacement(inst, 0, 0, w, h, false);
+        currentPlacements.push(p);
+
+        const newHollows = getPartHollows(inst.part, gap);
+        if (newHollows.length > 0) {
+          currentHollows.push(...getGlobalHollows(p, inst.part.width, newHollows));
+        }
       }
     }
   }
@@ -287,6 +476,7 @@ function packStrip(
   // Group by part ID, then lay out each group as a grid strip
   const allSheetPlacements: SheetLayout[][] = [];
   let currentPlacements: SheetPlacement[] = [];
+  let currentHollows: GlobalHollow[] = [];
   let curX = 0;
   let curY = 0;
   let rowHeight = 0;
@@ -297,6 +487,7 @@ function packStrip(
     }
     currentPlacements = [];
     curX = 0; curY = 0; rowHeight = 0;
+    currentHollows = [];
   }
 
   function place(inst: PartInstance, pw: number, ph: number, rotated: boolean) {
@@ -315,14 +506,46 @@ function packStrip(
       flush();
     }
 
-    currentPlacements.push(makePlacement(inst, curX, curY, pw, ph, rotated));
+    const p = makePlacement(inst, curX, curY, pw, ph, rotated);
+    currentPlacements.push(p);
+
+    const newHollows = getPartHollows(inst.part, gap);
+    if (newHollows.length > 0) {
+      currentHollows.push(...getGlobalHollows(p, inst.part.width, newHollows));
+    }
+
     curX += partW;
     rowHeight = Math.max(rowHeight, partH);
   }
 
   for (const inst of instances) {
+    let placed = false;
+
+    // 1. Try to nest inside existing hollow regions on the current sheet
+    for (let i = 0; i < currentHollows.length; i++) {
+      const h = currentHollows[i];
+      const orientations = tryOrientations(inst.part.width, inst.part.height, canRotate);
+      for (const o of orientations) {
+        if (o.w <= h.width + 0.01 && o.h <= h.height + 0.01) {
+          const px = h.x + (h.width - o.w) / 2;
+          const py = h.y + (h.height - o.h) / 2;
+          const p = makePlacement(inst, px, py, o.w, o.h, o.rotated);
+          currentPlacements.push(p);
+          currentHollows.splice(i, 1);
+
+          const newHollows = getPartHollows(inst.part, gap);
+          if (newHollows.length > 0) {
+            currentHollows.push(...getGlobalHollows(p, inst.part.width, newHollows));
+          }
+          placed = true;
+          break;
+        }
+      }
+      if (placed) break;
+    }
+    if (placed) continue;
+
     const orientations = tryOrientations(inst.part.width, inst.part.height, canRotate);
-    // For strip: pick the orientation that fits best in current row, else default
     let chosen = orientations[0];
     for (const o of orientations) {
       if (o.w + gap <= sheet.width - curX) { chosen = o; break; }

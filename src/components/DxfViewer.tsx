@@ -30,14 +30,15 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
     };
   }, [dxfData, boundingWidth, boundingHeight]);
 
+  const [prevGeometry, setPrevGeometry] = useState(geometry);
   // Current viewbox state for pan/zoom
   const [vb, setVb] = useState(defaultViewBox);
-  
-  // Reset view when geometry changes
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+
+  // Reset view when geometry changes during render
+  if (geometry !== prevGeometry) {
+    setPrevGeometry(geometry);
     setVb(defaultViewBox);
-  }, [defaultViewBox]);
+  }
 
   // Interaction state
   const [isDragging, setIsDragging] = useState(false);
@@ -155,14 +156,6 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
     return 10 * mag;
   }, [vb.w, vb.h]);
 
-  if (!dxfData || dxfData.paths.length === 0) {
-    return (
-      <div className="dxf-viewer-empty">
-        No valid geometry available for preview.
-      </div>
-    );
-  }
-
   // Grid line generation
   const gridLines = useMemo(() => {
     if (!showGrid) return null;
@@ -184,6 +177,14 @@ export function DxfViewer({ geometry, layerIntents = {}, pathIntents = {}, onPat
     }
     return lines;
   }, [showGrid, gridSpacing, vb]);
+
+  if (!dxfData || dxfData.paths.length === 0) {
+    return (
+      <div className="dxf-viewer-empty">
+        No valid geometry available for preview.
+      </div>
+    );
+  }
 
   return (
     <div 

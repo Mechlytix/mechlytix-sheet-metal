@@ -64,9 +64,27 @@ export function calculatePrice(input: PricingInput): PricingResult {
   const setupCostTotal = input.setupTimeMinutes * (input.machineHourlyRate / 60);
   const setupCostPerPart = setupCostTotal / Math.max(input.quantity, 1);
 
+  // ── Assist gas cost ───────────────────────────────────
+  let gasRate = input.assistGasCostPerHour ?? 0;
+  if (input.assistGasCostPerHour === undefined && input.assistGasType) {
+    const t = input.assistGasType.toLowerCase();
+    if (t === "oxygen") gasRate = 4.5;
+    else if (t === "nitrogen") gasRate = 12.0;
+    else if (t === "air") gasRate = 1.5;
+  }
+  const assistGasCostPerPart = (cutTimeMinutes / 60) * gasRate;
+
+  // ── Secondary operations cost ─────────────────────────
+  const secondaryOperationsCostPerPart = input.secondaryOperationsCost ?? 0;
+
   // ── Net cost ──────────────────────────────────────────
   const netCostPerPart =
-    materialCostPerPart + cuttingCostPerPart + bendingCostPerPart + setupCostPerPart;
+    materialCostPerPart +
+    cuttingCostPerPart +
+    bendingCostPerPart +
+    setupCostPerPart +
+    assistGasCostPerPart +
+    secondaryOperationsCostPerPart;
 
   // ── Markup → unit price ───────────────────────────────
   const markupMultiplier = 1 + input.markupPercent / 100;
@@ -94,5 +112,7 @@ export function calculatePrice(input: PricingInput): PricingResult {
     totalPrice,
     markupPercent: input.markupPercent,
     warnings,
+    assistGasCostPerPart,
+    secondaryOperationsCostPerPart,
   };
 }

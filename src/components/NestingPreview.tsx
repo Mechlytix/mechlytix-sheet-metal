@@ -22,6 +22,7 @@ interface NestingPreviewProps {
   tierResults: TierNestingResult[];
   selectedTierQty: number | null;
   nestingMode: NestingMode;
+  onSaveLeftover?: (width: number, height: number) => void;
 }
 
 // ─── Colour Helpers ──────────────────────────────────────
@@ -191,13 +192,18 @@ function RemnantSuggestion({ candidate }: { candidate: RemnantCandidate }) {
 
 // ─── Single result viewer ────────────────────────────────
 
-function ResultViewer({ result, label }: { result: NestingResult; label?: string }) {
+function ResultViewer({ result, label, onSaveLeftover }: { result: NestingResult; label?: string; onSaveLeftover?: (w: number, h: number) => void }) {
   const [activeSheetIdx, setActiveSheetIdx] = useState(0);
   const [hoveredPartId, setHoveredPartId] = useState<string | null>(null);
 
   if (result.sheets.length === 0) return null;
   const safeIdx = Math.min(activeSheetIdx, result.sheets.length - 1);
   const activeSheet = result.sheets[safeIdx];
+
+  const maxX = activeSheet.placements.reduce((max, p) => Math.max(max, p.x + p.width), 0);
+  const remWidth = Math.round(activeSheet.sheetWidth - maxX);
+  const remHeight = Math.round(activeSheet.sheetHeight);
+  const canSaveRemnant = remWidth >= 100;
 
   return (
     <div className="nest-result-viewer">
@@ -215,6 +221,33 @@ function ResultViewer({ result, label }: { result: NestingResult; label?: string
           </div>
           <span className={`nest-canvas-util-label ${utilisationClass(activeSheet.utilisation)}`}>
             {activeSheet.placements.length} part{activeSheet.placements.length !== 1 ? "s" : ""} · {activeSheet.utilisation}% utilised
+            {canSaveRemnant && onSaveLeftover && (
+              <button
+                onClick={() => onSaveLeftover(remWidth, remHeight)}
+                style={{
+                  marginLeft: "12px",
+                  background: "rgba(255,102,0,0.15)",
+                  border: "1px solid rgba(255,102,0,0.4)",
+                  color: "#ff6600",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255,102,0,0.25)";
+                  e.currentTarget.style.borderColor = "#ff6600";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(255,102,0,0.15)";
+                  e.currentTarget.style.borderColor = "rgba(255,102,0,0.4)";
+                }}
+              >
+                ♻️ Save Leftover ({remWidth} × {remHeight}mm)
+              </button>
+            )}
           </span>
 
           {/* Sheet navigation pills */}
@@ -252,7 +285,7 @@ function ResultViewer({ result, label }: { result: NestingResult; label?: string
 
 // ─── Main Component ─────────────────────────────────────
 
-export function NestingPreview({ tierResults, selectedTierQty, nestingMode }: NestingPreviewProps) {
+export function NestingPreview({ tierResults, selectedTierQty, nestingMode, onSaveLeftover }: NestingPreviewProps) {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
 
   const activeTier = tierResults.find(t => t.quantity === selectedTierQty) ?? tierResults[0] ?? null;
@@ -280,7 +313,7 @@ export function NestingPreview({ tierResults, selectedTierQty, nestingMode }: Ne
   }
 
   if (nestingMode === "combined" && combinedResult) {
-    return <ResultViewer result={combinedResult} />;
+    return <ResultViewer result={combinedResult} onSaveLeftover={onSaveLeftover} />;
   }
 
   if (nestingMode === "individual" && perFileResults.length > 0) {
@@ -298,7 +331,7 @@ export function NestingPreview({ tierResults, selectedTierQty, nestingMode }: Ne
             ))}
           </div>
         )}
-        {activeFileResult && <ResultViewer result={activeFileResult.result} label={activeFileResult.filename} />}
+        {activeFileResult && <ResultViewer result={activeFileResult.result} label={activeFileResult.filename} onSaveLeftover={onSaveLeftover} />}
       </div>
     );
   }

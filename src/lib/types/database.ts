@@ -587,6 +587,7 @@ export type Database = {
           quote_prefix: string
           updated_at: string | null
           user_id: string
+          shop_floor_pin: string | null
         }
         Insert: {
           brand_color?: string
@@ -598,6 +599,7 @@ export type Database = {
           quote_prefix?: string
           updated_at?: string | null
           user_id: string
+          shop_floor_pin?: string | null
         }
         Update: {
           brand_color?: string
@@ -609,6 +611,7 @@ export type Database = {
           quote_prefix?: string
           updated_at?: string | null
           user_id?: string
+          shop_floor_pin?: string | null
         }
         Relationships: []
       }

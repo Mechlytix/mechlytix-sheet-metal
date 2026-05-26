@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import ScanActions from "./ScanActions";
 
 // ─────────────────────────────────────────────────────────
 // /scan/[id] — Public QR scan landing page
@@ -190,6 +191,10 @@ export default async function ScanPage({ params }: Props) {
               <p className="scan-notes-text">📝 {remnant.notes}</p>
             </div>
           )}
+
+          {/* Interactive actions for shop floor operators */}
+          <ScanActions remnantId={remnant.id} initialStatus={status} />
+          <div style={{ height: 16 }} />
         </div>
 
         <div className="scan-footer">

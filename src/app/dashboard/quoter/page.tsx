@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useEffect, useRef, useMemo, Suspense, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboard } from "@/lib/dashboard-context";
 import { parseDXFGeometry } from "@/lib/dxf/parse-dxf";
@@ -258,8 +258,9 @@ function QuoteBreakdown({
 
 // â”€â”€â”€ Main Quoter Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export default function QuoterPage() {
+function QuoterPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { units } = useDashboard();
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
   const [items, setItems] = useState<QuoteItem[]>([]);
@@ -300,8 +301,63 @@ export default function QuoterPage() {
   const [allowRotation, setAllowRotation] = useState(true);
   const [grainLocked, setGrainLocked] = useState(false);
   const [remnants, setRemnants] = useState<AvailableRemnant[]>([]);
-  const [saveSelection, setSaveSelection] = useState<CustomerSelection | null>(null);
   const [saveNotes, setSaveNotes] = useState("");
+  const [saveSelection, setSaveSelection] = useState<CustomerSelection | null>(null);
+
+  const [remnantSaveModal, setRemnantSaveModal] = useState<{ w: number; h: number } | null>(null);
+  const [remnantSaveLocation, setRemnantSaveLocation] = useState("");
+  const [remnantSaveNotes, setRemnantSaveNotes] = useState("");
+  const [savingRemnant, startSavingRemnant] = useTransition();
+  const [saveRemnantSuccess, setSaveRemnantSuccess] = useState(false);
+
+  const handleSaveLeftover = useCallback((w: number, h: number) => {
+    setRemnantSaveModal({ w, h });
+    setRemnantSaveLocation("");
+    setRemnantSaveNotes(activeItem ? `Leftover remnant from job: ${activeItem.filename}` : "Leftover remnant");
+    setSaveRemnantSuccess(false);
+  }, [activeItem]);
+
+  const confirmSaveLeftover = async () => {
+    if (!userId || !activeItem || !remnantSaveModal) return;
+
+    startSavingRemnant(async () => {
+      const supabase = createClient();
+      const thickMm = activeItem.thickness || activeItem.geometry.thickness || 1;
+
+      const { data, error } = await supabase.from("remnants").insert({
+        user_id: userId,
+        material_id: activeItem.materialId,
+        width_mm: remnantSaveModal.w,
+        height_mm: remnantSaveModal.h,
+        thickness_mm: thickMm,
+        location: remnantSaveLocation.trim() || null,
+        notes: remnantSaveNotes.trim() || null,
+        status: "available",
+      }).select("id").single();
+
+      if (error || !data) {
+        alert(error?.message || "Failed to save remnant.");
+        return;
+      }
+
+      const scanUrl = `${window.location.origin}/scan/${data.id}`;
+      await supabase.from("remnants").update({ qr_code_data: scanUrl }).eq("id", data.id);
+
+      const mat = materials.find(m => m.id === activeItem.materialId);
+      const newRem = {
+        id: data.id,
+        width: remnantSaveModal.w,
+        height: remnantSaveModal.h,
+        thickness: thickMm,
+        location: remnantSaveLocation.trim() || null,
+        materialName: mat?.name ?? "Unknown",
+      };
+      setRemnants(prev => [newRem, ...prev]);
+
+      setSaveRemnantSuccess(true);
+      setTimeout(() => setRemnantSaveModal(null), 1500);
+    });
+  };
 
   useEffect(() => {
     async function load() {
@@ -342,6 +398,68 @@ export default function QuoterPage() {
     }
     load();
   }, []);
+
+  // Load item from URL if sent from unfolder
+  useEffect(() => {
+    if (!userId || !defaultMaterialId || !defaultMachineId) return;
+
+    const queryUnfolded = searchParams.get("unfolded");
+    if (queryUnfolded !== "true") return;
+
+    // Check if we already loaded this item
+    if (items.length > 0) return;
+
+    const filename = searchParams.get("filename") || "unfolded-part.step";
+    const width = parseFloat(searchParams.get("width") || "0");
+    const height = parseFloat(searchParams.get("height") || "0");
+    const thickness = parseFloat(searchParams.get("thickness") || "0");
+    const bends = parseInt(searchParams.get("bends") || "0");
+    const materialName = searchParams.get("material") || "";
+    
+    // Find matching material
+    let matchedMaterialId = defaultMaterialId;
+    if (materialName) {
+      const match = materials.find(m => 
+        m.name.toLowerCase().includes(materialName.toLowerCase()) ||
+        materialName.toLowerCase().includes(m.name.toLowerCase())
+      );
+      if (match) matchedMaterialId = match.id;
+    }
+
+    const geometry: PricingGeometry = {
+      inputType: "step",
+      boundingWidth: width,
+      boundingHeight: height,
+      partArea: width * height * 0.9,
+      perimeter: 2 * (width + height),
+      pierceCount: 0,
+      bendCount: bends,
+      bendAngles: [],
+      thickness: thickness,
+      thicknessConfidence: "detected",
+    };
+
+    const newItem: QuoteItem = {
+      id: Math.random().toString(36).substring(2, 9),
+      filename,
+      geometry,
+      sourceFile: null,
+      materialId: matchedMaterialId,
+      machineId: defaultMachineId,
+      thickness,
+      quantity: 1,
+      markup: defaultMarkup,
+      layerIntents: {},
+      pathIntents: {},
+      manualBendCount: null,
+      leadTime: "3-5 days",
+      priceBreaks: [],
+    };
+
+    setItems([newItem]);
+    setActiveIndex(0);
+    setPhase({ name: "ready" });
+  }, [userId, defaultMaterialId, defaultMachineId, materials, searchParams, defaultMarkup]);
 
   const updateActiveItem = useCallback((patch: Partial<QuoteItem>) => {
     setItems(prev => prev.map((item, i) => i === activeIndex ? { ...item, ...patch } : item));
@@ -959,6 +1077,7 @@ export default function QuoterPage() {
                     tierResults={tierNestingResults}
                     selectedTierQty={selectedNestTierQty}
                     nestingMode={nestingMode}
+                    onSaveLeftover={handleSaveLeftover}
                   />
                 </div>
                 <div className="quoter-panel">
@@ -1215,6 +1334,74 @@ export default function QuoterPage() {
           </div>
         </>
       )}
+
+      {/* Remnant Save Modal */}
+      {remnantSaveModal && (
+        <div style={{ zIndex: 1000, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", position: "fixed", inset: 0 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#161616", border: "1px solid #2a2a2a", borderRadius: "16px", width: "90%", maxWidth: "400px", padding: "24px", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h2 style={{ fontSize: "18px", fontWeight: "bold", color: "#fff", margin: 0 }}>Log Offcut as Remnant</h2>
+              <button onClick={() => setRemnantSaveModal(null)} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: "18px" }}>✕</button>
+            </div>
+            {saveRemnantSuccess ? (
+              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "rgba(74,222,128,0.1)", border: "2px solid #4ade80", color: "#4ade80", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "24px", marginBottom: "16px" }}>✓</div>
+                <p style={{ color: "#fff", fontWeight: 600, fontSize: "15px", margin: 0 }}>Remnant Logged in Scrap Rack!</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div style={{ background: "rgba(255,255,255,0.02)", padding: "14px", borderRadius: "10px", border: "1px solid #2a2a2a" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "8px" }}>
+                    <span style={{ color: "#888" }}>Dimensions</span>
+                    <strong style={{ color: "#fff" }}>{remnantSaveModal.w} × {remnantSaveModal.h} mm</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "8px" }}>
+                    <span style={{ color: "#888" }}>Material</span>
+                    <strong style={{ color: "#fff" }}>{materials.find(m => m.id === activeItem?.materialId)?.name || "Unknown"}</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
+                    <span style={{ color: "#888" }}>Thickness</span>
+                    <strong style={{ color: "#fff" }}>{activeItem?.thickness || activeItem?.geometry.thickness || 1} mm</strong>
+                  </div>
+                </div>
+                <div className="form-field">
+                  <label style={{ fontSize: "12px", color: "#aaa", display: "block", marginBottom: "6px" }}>Rack Location</label>
+                  <input
+                    type="text"
+                    value={remnantSaveLocation}
+                    onChange={e => setRemnantSaveLocation(e.target.value)}
+                    placeholder="e.g. Rack B, Shelf 4"
+                    style={{ background: "#202020", border: "1px solid #2a2a2a", borderRadius: "8px", color: "#fff", padding: "10px", width: "100%", outline: "none" }}
+                  />
+                </div>
+                <div className="form-field">
+                  <label style={{ fontSize: "12px", color: "#aaa", display: "block", marginBottom: "6px" }}>Notes</label>
+                  <textarea
+                    rows={2}
+                    value={remnantSaveNotes}
+                    onChange={e => setRemnantSaveNotes(e.target.value)}
+                    style={{ background: "#202020", border: "1px solid #2a2a2a", borderRadius: "8px", color: "#fff", padding: "10px", width: "100%", resize: "none", outline: "none" }}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: "10px", marginTop: "12px", justifyContent: "flex-end" }}>
+                  <button className="btn-ghost" onClick={() => setRemnantSaveModal(null)} disabled={savingRemnant}>Cancel</button>
+                  <button className="btn-primary" onClick={confirmSaveLeftover} disabled={savingRemnant}>
+                    {savingRemnant ? "Saving…" : "Save Remnant"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+export default function QuoterPage() {
+  return (
+    <Suspense fallback={<div className="dash-page"><div className="loading-state">Loading…</div></div>}>
+      <QuoterPageContent />
+    </Suspense>
   );
 }

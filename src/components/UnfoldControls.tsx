@@ -18,6 +18,7 @@ interface UnfoldControlsProps {
   onFileUpload?: (file: File) => void;
   workerStatus?: string;
   onExportDXF?: () => void;
+  onSendToQuoter?: () => void;
   viewMode?: "3d" | "2d";
   onViewModeChange?: (mode: "3d" | "2d") => void;
 }
@@ -33,6 +34,7 @@ export function UnfoldControls({
   onFileUpload,
   workerStatus,
   onExportDXF,
+  onSendToQuoter,
   viewMode = "3d",
   onViewModeChange,
 }: UnfoldControlsProps) {
@@ -108,7 +110,7 @@ export function UnfoldControls({
             <div className="flex flex-col gap-2 mt-4">
               <button
                 onClick={onExportDXF}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold py-2 px-3 rounded transition-colors shadow-lg border border-blue-500/20 cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold py-2.5 px-3 rounded transition-colors shadow-lg border border-blue-500/20 cursor-pointer"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -117,6 +119,18 @@ export function UnfoldControls({
                 </svg>
                 Export DXF Flat Pattern
               </button>
+              {onSendToQuoter && (
+                <button
+                  onClick={onSendToQuoter}
+                  className="w-full flex items-center justify-center gap-2 bg-[#ff6600] hover:bg-[#e65c00] active:bg-[#cc5200] text-white text-xs font-semibold py-2.5 px-3 rounded transition-colors shadow-lg border border-[#ff6600]/20 cursor-pointer"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="1" x2="12" y2="23"/>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                  </svg>
+                  Send to Quoter
+                </button>
+              )}
               {onViewModeChange && (
                 <button
                   onClick={() => onViewModeChange(viewMode === "2d" ? "3d" : "2d")}

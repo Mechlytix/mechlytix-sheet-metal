@@ -279,7 +279,6 @@ function BendZoneMesh({
 
   // Reusable vectors
   const _radDir = useMemo(() => new THREE.Vector3(), []);
-  const _pos = useMemo(() => new THREE.Vector3(), []);
 
   // Per-frame: update arc vertex positions
   // Interpolate between arc shape (folded) and flat strip (unfolded)
@@ -292,7 +291,6 @@ function BendZoneMesh({
     const innerR = radius;
     const outerR = radius + thickness;
     const halfD = depth / 2;
-    const absAngle = Math.abs(angle);
 
     // Flat strip dimensions: the unfolded bend zone becomes a flat rectangle.
     // The strip extends from the parent edge in the -parentDir direction
@@ -422,55 +420,57 @@ function HingeGroup({
   const { properties, childFlange } = bend;
   const [ox, oy, oz] = properties.axisOrigin;
 
-  // Pre-compute quaternions for folded and flat states
-  const foldedQuat = useRef(new THREE.Quaternion());
-  const flatQuat = useRef(new THREE.Quaternion());
-  const currentQuat = useRef(new THREE.Quaternion());
-  const axisVec = useRef(new THREE.Vector3(...properties.axisDirection).normalize());
+  // Pre-compute vectors and quaternions via useMemo to avoid accessing refs during render
+  const axisVec = useMemo(() => new THREE.Vector3(...properties.axisDirection).normalize(), [properties.axisDirection]);
 
-  // The fold angle: rotation from flat to folded
-  foldedQuat.current.setFromAxisAngle(axisVec.current, properties.angle);
+  const foldedQuat = useMemo(() => {
+    const q = new THREE.Quaternion();
+    q.setFromAxisAngle(axisVec, properties.angle);
+    return q;
+  }, [axisVec, properties.angle]);
+
+  const flatQuat = useMemo(() => new THREE.Quaternion(), []);
+  const currentQuat = useMemo(() => new THREE.Quaternion(), []);
 
   // BA direction: the direction the child slides in when UNFOLDED.
   // This is the child's perpendicular-to-axis direction (NOT rotated by fold).
   // For L-Bracket: childPos = [30,0,25], axis = Z → perpendicular = [30,0,0] → norm [1,0,0]
   // When flat, the child extends in +X from the hinge, so BA slides it further in +X.
-  const baDirVec = useRef<THREE.Vector3>(null!);
-  if (!baDirVec.current) {
+  const baDirVec = useMemo(() => {
     const childCenter = new THREE.Vector3(...childFlange.localPosition);
     // Project out the axis component to get the perpendicular direction
-    const axisProj = childCenter.clone().projectOnVector(axisVec.current);
+    const axisProj = childCenter.clone().projectOnVector(axisVec);
     const radial = childCenter.clone().sub(axisProj);
     if (radial.length() > 0.001) {
       radial.normalize();
     } else {
       // Fallback
-      const up = Math.abs(axisVec.current.y) > 0.9
+      const up = Math.abs(axisVec.y) > 0.9
         ? new THREE.Vector3(1, 0, 0)
         : new THREE.Vector3(0, 1, 0);
-      radial.crossVectors(up, axisVec.current).normalize();
+      radial.crossVectors(up, axisVec).normalize();
     }
-    baDirVec.current = radial;
-  }
+    return radial;
+  }, [childFlange.localPosition, axisVec]);
 
   useFrame(() => {
     if (!rotationGroupRef.current) return;
     const progress = progressRef.current ?? 0;
 
     // Slerp from folded → flat
-    currentQuat.current.slerpQuaternions(
-      foldedQuat.current,
-      flatQuat.current,
+    currentQuat.slerpQuaternions(
+      foldedQuat,
+      flatQuat,
       progress
     );
-    rotationGroupRef.current.quaternion.copy(currentQuat.current);
+    rotationGroupRef.current.quaternion.copy(currentQuat);
 
     // Bend allowance offset: slide child outward as it unfolds
     const baOffset = properties.bendAllowance * progress;
     rotationGroupRef.current.position.set(
-      baDirVec.current.x * baOffset,
-      baDirVec.current.y * baOffset,
-      baDirVec.current.z * baOffset
+      baDirVec.x * baOffset,
+      baDirVec.y * baOffset,
+      baDirVec.z * baOffset
     );
   });
 
