@@ -54,6 +54,15 @@ interface QuoteItem {
   manualBendCount: number | null;
   leadTime: string;
   priceBreaks: PriceBreak[];
+  rawExtractedData?: {
+    material?: string | null;
+    thickness?: number | null;
+    boundingWidth?: number | null;
+    boundingHeight?: number | null;
+    bendCount?: number | null;
+    drawingTitle?: string | null;
+    quantity?: number | null;
+  };
 }
 
 // â”€â”€â”€ File Drop Zone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -687,6 +696,8 @@ function QuoterPageContent() {
         let quantityOverride = 1;
         let materialIdOverride = defaultMaterialId;
 
+        let rawExtData: any = undefined;
+
         if (ext === "pdf") {
           const formData = new FormData();
           formData.append("file", file);
@@ -702,6 +713,16 @@ function QuoterPageContent() {
           if (data.error) {
             throw new Error(data.error);
           }
+
+          rawExtData = {
+            material: data.material || null,
+            thickness: data.thickness != null ? parseFloat(data.thickness) : null,
+            boundingWidth: data.boundingWidth != null ? parseFloat(data.boundingWidth) : null,
+            boundingHeight: data.boundingHeight != null ? parseFloat(data.boundingHeight) : null,
+            bendCount: data.bendCount != null ? parseInt(data.bendCount) : null,
+            drawingTitle: data.drawingTitle || null,
+            quantity: data.quantity != null ? parseInt(data.quantity) : null,
+          };
 
           // Try to match material from materials list
           if (data.material) {
@@ -750,7 +771,8 @@ function QuoterPageContent() {
           id: Math.random().toString(36).substr(2, 9), filename: file.name, geometry: geo, sourceFile: file,
           materialId: materialIdOverride, machineId: defaultMachineId, thickness: geo.thickness || 0,
           quantity: quantityOverride, markup: defaultMarkup, layerIntents: initialIntents, pathIntents: {},
-          manualBendCount: null, leadTime: "7-10 Days", priceBreaks: []
+          manualBendCount: null, leadTime: "7-10 Days", priceBreaks: [],
+          rawExtractedData: rawExtData
         });
       }
 
@@ -830,7 +852,9 @@ function QuoterPageContent() {
           cutting_cost: r.cuttingCostPerPart, bending_cost: r.bendingCostPerPart, setup_cost: r.setupCostTotal,
           unit_price: r.unitPrice, total_price: r.totalPrice,
           customer_id: contactId, company_id: companyId, notes: notes,
-          status: "draft", upload_id: uploadId, price_breaks: item.priceBreaks, lead_time: item.leadTime
+          status: "draft", upload_id: uploadId, price_breaks: item.priceBreaks, lead_time: item.leadTime,
+          drawing_title: item.rawExtractedData?.drawingTitle || null,
+          raw_extracted_data: item.rawExtractedData || null
         }).select("id").single();
 
         if (quoteData && !firstQuoteId) firstQuoteId = quoteData.id;
@@ -993,6 +1017,198 @@ function QuoterPageContent() {
                 </div>
                 <div className="quoter-panel">
                   <div className="qrd-content">
+                    {activeItem.rawExtractedData && (
+                      <div className="wingman-panel">
+                        <div className="wingman-header">
+                          <span className="wingman-icon">⚡</span>
+                          <span className="wingman-title">Wingman AI Findings</span>
+                        </div>
+                        <div className="wingman-body">
+                          {activeItem.rawExtractedData.drawingTitle && (
+                            <div className="wingman-row title-row">
+                              <span className="wingman-label">Drawing Title</span>
+                              <span className="wingman-value" title={activeItem.rawExtractedData.drawingTitle}>
+                                {activeItem.rawExtractedData.drawingTitle}
+                              </span>
+                            </div>
+                          )}
+                          
+                          {/* Material row */}
+                          <div className="wingman-row">
+                            <div className="wingman-row-left">
+                              <span className="wingman-label">Material</span>
+                              <span className="wingman-value">{activeItem.rawExtractedData.material || "Not detected"}</span>
+                            </div>
+                            <div className="wingman-row-right">
+                              {(() => {
+                                const extMat = activeItem.rawExtractedData?.material;
+                                if (!extMat) return <span className="wm-badge unset">? Unset</span>;
+                                const currentMat = materials.find(m => m.id === activeItem.materialId);
+                                const isMatch = currentMat && 
+                                  (currentMat.name.toLowerCase().includes(extMat.toLowerCase()) ||
+                                   extMat.toLowerCase().includes(currentMat.name.toLowerCase()));
+                                if (isMatch) return <span className="wm-badge match">✔ Match</span>;
+                                
+                                const matched = materials.find(m => 
+                                  m.name.toLowerCase().includes(extMat.toLowerCase()) ||
+                                  extMat.toLowerCase().includes(m.name.toLowerCase())
+                                );
+                                
+                                return (
+                                  <div className="wm-action-cell">
+                                    <span className="wm-badge mismatch">⚠ Mismatch</span>
+                                    <button 
+                                      className="wm-apply-btn" 
+                                      onClick={() => matched && updateActiveItem({ materialId: matched.id })}
+                                      disabled={!matched}
+                                      title={matched ? `Set to ${matched.name}` : "No matching material found in DB"}
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {/* Thickness row */}
+                          <div className="wingman-row">
+                            <div className="wingman-row-left">
+                              <span className="wingman-label">Thickness</span>
+                              <span className="wingman-value">
+                                {activeItem.rawExtractedData.thickness != null ? `${activeItem.rawExtractedData.thickness} mm` : "Not detected"}
+                              </span>
+                            </div>
+                            <div className="wingman-row-right">
+                              {(() => {
+                                const currentThick = activeItem.thickness || activeItem.geometry.thickness || 0;
+                                const extThick = activeItem.rawExtractedData.thickness;
+                                if (extThick == null) return <span className="wm-badge unset">? Unset</span>;
+                                const isMatch = Math.abs(currentThick - extThick) < 0.05;
+                                if (isMatch) return <span className="wm-badge match">✔ Match</span>;
+                                return (
+                                  <div className="wm-action-cell">
+                                    <span className="wm-badge mismatch">⚠ Mismatch</span>
+                                    <button 
+                                      className="wm-apply-btn" 
+                                      onClick={() => updateActiveItem({ thickness: extThick })}
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {/* Dimensions row */}
+                          <div className="wingman-row">
+                            <div className="wingman-row-left">
+                              <span className="wingman-label">Dimensions</span>
+                              <span className="wingman-value">
+                                {activeItem.rawExtractedData.boundingWidth != null && activeItem.rawExtractedData.boundingHeight != null
+                                  ? `${activeItem.rawExtractedData.boundingWidth} × ${activeItem.rawExtractedData.boundingHeight} mm`
+                                  : "Not detected"}
+                              </span>
+                            </div>
+                            <div className="wingman-row-right">
+                              {(() => {
+                                const extW = activeItem.rawExtractedData.boundingWidth;
+                                const extH = activeItem.rawExtractedData.boundingHeight;
+                                if (extW == null || extH == null) return <span className="wm-badge unset">? Unset</span>;
+                                const curW = activeItem.geometry.boundingWidth;
+                                const curH = activeItem.geometry.boundingHeight;
+                                const isMatch = Math.abs(curW - extW) < 1 && Math.abs(curH - extH) < 1;
+                                if (isMatch) return <span className="wm-badge match">✔ Match</span>;
+                                return (
+                                  <div className="wm-action-cell">
+                                    <span className="wm-badge mismatch">⚠ Mismatch</span>
+                                    <button 
+                                      className="wm-apply-btn" 
+                                      onClick={() => {
+                                        updateActiveItem({
+                                          geometry: {
+                                            ...activeItem.geometry,
+                                            boundingWidth: extW,
+                                            boundingHeight: extH,
+                                            partArea: extW * extH,
+                                            perimeter: 2 * (extW + extH)
+                                          }
+                                        });
+                                      }}
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {/* Bends row */}
+                          <div className="wingman-row">
+                            <div className="wingman-row-left">
+                              <span className="wingman-label">Bends</span>
+                              <span className="wingman-value">
+                                {activeItem.rawExtractedData.bendCount != null ? activeItem.rawExtractedData.bendCount : "Not detected"}
+                              </span>
+                            </div>
+                            <div className="wingman-row-right">
+                              {(() => {
+                                const extBends = activeItem.rawExtractedData.bendCount;
+                                if (extBends == null) return <span className="wm-badge unset">? Unset</span>;
+                                const curBends = activeItem.manualBendCount ?? activeItem.geometry.bendCount ?? 0;
+                                const isMatch = curBends === extBends;
+                                if (isMatch) return <span className="wm-badge match">✔ Match</span>;
+                                return (
+                                  <div className="wm-action-cell">
+                                    <span className="wm-badge mismatch">⚠ Mismatch</span>
+                                    <button 
+                                      className="wm-apply-btn" 
+                                      onClick={() => updateActiveItem({ manualBendCount: extBends })}
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {/* Quantity row */}
+                          <div className="wingman-row">
+                            <div className="wingman-row-left">
+                              <span className="wingman-label">Quantity</span>
+                              <span className="wingman-value">
+                                {activeItem.rawExtractedData.quantity != null ? activeItem.rawExtractedData.quantity : "Not detected"}
+                              </span>
+                            </div>
+                            <div className="wingman-row-right">
+                              {(() => {
+                                const extQty = activeItem.rawExtractedData.quantity;
+                                if (extQty == null) return <span className="wm-badge unset">? Unset</span>;
+                                const curQty = activeItem.quantity;
+                                const isMatch = curQty === extQty;
+                                if (isMatch) return <span className="wm-badge match">✔ Match</span>;
+                                return (
+                                  <div className="wm-action-cell">
+                                    <span className="wm-badge mismatch">⚠ Mismatch</span>
+                                    <button 
+                                      className="wm-apply-btn" 
+                                      onClick={() => updateActiveItem({ quantity: extQty })}
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                        </div>
+                      </div>
+                    )}
+
                     <div className="form-field">
                       <label>Material</label>
                       <select value={activeItem.materialId} onChange={e => updateActiveItem({ materialId: e.target.value })}>

@@ -217,6 +217,10 @@ export function QuoteDetailClient({
   const [bendCount, setBendCount] = useState(activeQuote.bend_count ?? 0);
   const [materialId, setMaterialId] = useState(activeQuote.material_id ?? "");
   const [machineId, setMachineId] = useState(activeQuote.machine_id ?? "");
+  const [boundingWidth, setBoundingWidth] = useState(activeQuote.bounding_width_mm ?? 0);
+  const [boundingHeight, setBoundingHeight] = useState(activeQuote.bounding_height_mm ?? 0);
+  const [perimeterMm, setPerimeterMm] = useState(activeQuote.perimeter_mm ?? 0);
+  const [partAreaMm2, setPartAreaMm2] = useState(activeQuote.part_area_mm2 ?? 0);
   const [customerSelection, setCustomerSelection] = useState<CustomerSelection | null>(() => {
     const contactId = quote.customer_id ?? null;
     const companyId = quote.company_id ?? null;
@@ -280,6 +284,10 @@ export function QuoteDetailClient({
     setBendCount(q.bend_count ?? 0);
     setMaterialId(q.material_id ?? "");
     setMachineId(q.machine_id ?? "");
+    setBoundingWidth(q.bounding_width_mm ?? 0);
+    setBoundingHeight(q.bounding_height_mm ?? 0);
+    setPerimeterMm(q.perimeter_mm ?? 0);
+    setPartAreaMm2(q.part_area_mm2 ?? 0);
     setLayerIntents({});
     setPathIntents({});
   }, [activePartIndex]);
@@ -445,6 +453,10 @@ export function QuoteDetailClient({
     setBendCount(q.bend_count ?? 0);
     setMaterialId(q.material_id ?? "");
     setMachineId(q.machine_id ?? "");
+    setBoundingWidth(q.bounding_width_mm ?? 0);
+    setBoundingHeight(q.bounding_height_mm ?? 0);
+    setPerimeterMm(q.perimeter_mm ?? 0);
+    setPartAreaMm2(q.part_area_mm2 ?? 0);
     setCustomerSelection(quote.customer_id ? {
       contactId: quote.customer_id,
       companyId: quote.company_id ?? "",
@@ -483,6 +495,10 @@ export function QuoteDetailClient({
       bend_count: effectiveGeometry?.bendCount ?? bendCount,
       material_id: materialId || null,
       machine_id: machineId || null,
+      bounding_width_mm: boundingWidth || null,
+      bounding_height_mm: boundingHeight || null,
+      perimeter_mm: perimeterMm || null,
+      part_area_mm2: partAreaMm2 || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -689,6 +705,205 @@ export function QuoteDetailClient({
                             </div>
                           );
                         })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Wingman AI Findings Panel */}
+                  {activeQuote.input_type === "pdf" && activeQuote.raw_extracted_data && (
+                    <div className="wingman-panel" style={{ marginTop: "1rem" }}>
+                      <div className="wingman-header">
+                        <span className="wingman-icon">⚡</span>
+                        <span className="wingman-title">Wingman AI Findings</span>
+                      </div>
+                      <div className="wingman-body">
+                        {activeQuote.drawing_title && (
+                          <div className="wingman-row title-row">
+                            <span className="wingman-label">Drawing Title</span>
+                            <span className="wingman-value" title={activeQuote.drawing_title}>
+                              {activeQuote.drawing_title}
+                            </span>
+                          </div>
+                        )}
+                        
+                        {/* Material row */}
+                        <div className="wingman-row">
+                          <div className="wingman-row-left">
+                            <span className="wingman-label">Material</span>
+                            <span className="wingman-value">{activeQuote.raw_extracted_data.material || "Not detected"}</span>
+                          </div>
+                          <div className="wingman-row-right">
+                            {(() => {
+                              const activeMatId = editing ? materialId : activeQuote.material_id;
+                              const currentMat = materials.find(m => m.id === activeMatId);
+                              const extMat = activeQuote.raw_extracted_data.material;
+                              const isMatch = currentMat && extMat &&
+                                (currentMat.name.toLowerCase().includes(extMat.toLowerCase()) ||
+                                 extMat.toLowerCase().includes(currentMat.name.toLowerCase()));
+                              if (isMatch) return <span className="wm-badge match">✔ Match</span>;
+                              if (!extMat) return <span className="wm-badge unset">? Unset</span>;
+                              
+                              const matched = materials.find(m => 
+                                m.name.toLowerCase().includes(extMat.toLowerCase()) ||
+                                extMat.toLowerCase().includes(m.name.toLowerCase())
+                              );
+                              
+                              return (
+                                <div className="wm-action-cell">
+                                  <span className="wm-badge mismatch">⚠ Mismatch</span>
+                                  {editing && (
+                                    <button 
+                                      className="wm-apply-btn" 
+                                      onClick={() => matched && setMaterialId(matched.id)}
+                                      disabled={!matched}
+                                      title={matched ? `Set to ${matched.name}` : "No matching material found in DB"}
+                                    >
+                                      Apply
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        {/* Thickness row */}
+                        <div className="wingman-row">
+                          <div className="wingman-row-left">
+                            <span className="wingman-label">Thickness</span>
+                            <span className="wingman-value">
+                              {activeQuote.raw_extracted_data.thickness != null ? `${activeQuote.raw_extracted_data.thickness} mm` : "Not detected"}
+                            </span>
+                          </div>
+                          <div className="wingman-row-right">
+                            {(() => {
+                              const activeThick = editing ? thicknessMm : (activeQuote.thickness_mm || 0);
+                              const extThick = activeQuote.raw_extracted_data.thickness;
+                              if (extThick == null) return <span className="wm-badge unset">? Unset</span>;
+                              const isMatch = Math.abs(activeThick - extThick) < 0.05;
+                              if (isMatch) return <span className="wm-badge match">✔ Match</span>;
+                              return (
+                                <div className="wm-action-cell">
+                                  <span className="wm-badge mismatch">⚠ Mismatch</span>
+                                  {editing && (
+                                    <button 
+                                      className="wm-apply-btn" 
+                                      onClick={() => setThicknessMm(extThick)}
+                                    >
+                                      Apply
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        {/* Dimensions row */}
+                        <div className="wingman-row">
+                          <div className="wingman-row-left">
+                            <span className="wingman-label">Dimensions</span>
+                            <span className="wingman-value">
+                              {activeQuote.raw_extracted_data.boundingWidth != null && activeQuote.raw_extracted_data.boundingHeight != null
+                                ? `${activeQuote.raw_extracted_data.boundingWidth} × ${activeQuote.raw_extracted_data.boundingHeight} mm`
+                                : "Not detected"}
+                            </span>
+                          </div>
+                          <div className="wingman-row-right">
+                            {(() => {
+                              const extW = activeQuote.raw_extracted_data.boundingWidth;
+                              const extH = activeQuote.raw_extracted_data.boundingHeight;
+                              if (extW == null || extH == null) return <span className="wm-badge unset">? Unset</span>;
+                              const activeW = editing ? boundingWidth : (activeQuote.bounding_width_mm || 0);
+                              const activeH = editing ? boundingHeight : (activeQuote.bounding_height_mm || 0);
+                              const isMatch = Math.abs(activeW - extW) < 1 && Math.abs(activeH - extH) < 1;
+                              if (isMatch) return <span className="wm-badge match">✔ Match</span>;
+                              return (
+                                <div className="wm-action-cell">
+                                  <span className="wm-badge mismatch">⚠ Mismatch</span>
+                                  {editing && (
+                                    <button 
+                                      className="wm-apply-btn" 
+                                      onClick={() => {
+                                        setBoundingWidth(extW);
+                                        setBoundingHeight(extH);
+                                        setPartAreaMm2(extW * extH);
+                                        setPerimeterMm(2 * (extW + extH));
+                                      }}
+                                    >
+                                      Apply
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        {/* Bends row */}
+                        <div className="wingman-row">
+                          <div className="wingman-row-left">
+                            <span className="wingman-label">Bends</span>
+                            <span className="wingman-value">
+                              {activeQuote.raw_extracted_data.bendCount != null ? activeQuote.raw_extracted_data.bendCount : "Not detected"}
+                            </span>
+                          </div>
+                          <div className="wingman-row-right">
+                            {(() => {
+                              const extBends = activeQuote.raw_extracted_data.bendCount;
+                              if (extBends == null) return <span className="wm-badge unset">? Unset</span>;
+                              const activeBends = editing ? bendCount : (activeQuote.bend_count || 0);
+                              const isMatch = activeBends === extBends;
+                              if (isMatch) return <span className="wm-badge match">✔ Match</span>;
+                              return (
+                                <div className="wm-action-cell">
+                                  <span className="wm-badge mismatch">⚠ Mismatch</span>
+                                  {editing && (
+                                    <button 
+                                      className="wm-apply-btn" 
+                                      onClick={() => setBendCount(extBends)}
+                                    >
+                                      Apply
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        {/* Quantity row */}
+                        <div className="wingman-row">
+                          <div className="wingman-row-left">
+                            <span className="wingman-label">Quantity</span>
+                            <span className="wingman-value">
+                              {activeQuote.raw_extracted_data.quantity != null ? activeQuote.raw_extracted_data.quantity : "Not detected"}
+                            </span>
+                          </div>
+                          <div className="wingman-row-right">
+                            {(() => {
+                              const extQty = activeQuote.raw_extracted_data.quantity;
+                              if (extQty == null) return <span className="wm-badge unset">? Unset</span>;
+                              const activeQty = editing ? quantity : (activeQuote.quantity ?? 1);
+                              const isMatch = activeQty === extQty;
+                              if (isMatch) return <span className="wm-badge match">✔ Match</span>;
+                              return (
+                                <div className="wm-action-cell">
+                                  <span className="wm-badge mismatch">⚠ Mismatch</span>
+                                  {editing && (
+                                    <button 
+                                      className="wm-apply-btn" 
+                                      onClick={() => setPriceBreaks(prev => prev.map((pb, idx) => idx === 0 ? { ...pb, quantity: extQty } : pb))}
+                                    >
+                                      Apply
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
                       </div>
                     </div>
                   )}
