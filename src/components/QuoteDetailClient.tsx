@@ -11,6 +11,7 @@ import { PdfDownloadButton } from "@/components/PdfDownloadButton";
 import { PdfPreviewButton } from "@/components/PdfPreviewButton";
 import { QuoteAttachments } from "@/components/QuoteAttachments";
 import { DxfViewer } from "@/components/DxfViewer";
+import { PdfDrawingViewer } from "@/components/PdfDrawingViewer";
 import Link from "next/link";
 import { calculatePrice } from "@/lib/pricing/cost-model";
 import { getFeedRateWithCustom } from "@/lib/pricing/feed-rates";
@@ -178,6 +179,7 @@ export function QuoteDetailClient({
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [activeHighlightField, setActiveHighlightField] = useState<string | null>(null);
 
   // ── Batch part navigation ──
   const isBatch = batchQuotes.length > 1;
@@ -625,16 +627,20 @@ export function QuoteDetailClient({
                 {/* DXF or PDF Viewer */}
                 <div className="viewer-split-viewer no-print">
                   {activeQuote.input_type === "pdf" && pdfUrl ? (
-                    <iframe
-                      src={pdfUrl}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        border: "none",
-                        background: "var(--bg-secondary)",
-                        borderRadius: "8px",
+                    <PdfDrawingViewer
+                      pdfUrl={pdfUrl}
+                      highlights={{
+                        material: activeQuote.raw_extracted_data?.material,
+                        thickness: activeQuote.raw_extracted_data?.thickness,
+                        boundingWidth: activeQuote.raw_extracted_data?.boundingWidth,
+                        boundingHeight: activeQuote.raw_extracted_data?.boundingHeight,
+                        bendCount: activeQuote.raw_extracted_data?.bendCount,
+                        drawingTitle: activeQuote.raw_extracted_data?.drawingTitle,
+                        quantity: activeQuote.raw_extracted_data?.quantity,
                       }}
-                      title="PDF Drawing Preview"
+                      tolerances={activeQuote.raw_extracted_data?.tolerances}
+                      activeField={activeHighlightField}
+                      onHoverField={setActiveHighlightField}
                     />
                   ) : activeDxf ? (
                     <DxfViewer
@@ -709,34 +715,42 @@ export function QuoteDetailClient({
                     </div>
                   )}
 
-                  {/* Wingman AI Findings Panel */}
+                  {/* Blueprint Insights Panel */}
                   {activeQuote.input_type === "pdf" && activeQuote.raw_extracted_data && (
-                    <div className="wingman-panel" style={{ marginTop: "1rem" }}>
-                      <div className="wingman-header">
-                        <span className="wingman-icon">⚡</span>
-                        <span className="wingman-title">Wingman AI Findings</span>
+                    <div className="insights-panel" style={{ marginTop: "1rem" }}>
+                      <div className="insights-header">
+                        <span className="insights-icon">⚡</span>
+                        <span className="insights-title">Blueprint Insights</span>
                       </div>
-                      <div className="wingman-body">
+                      <div className="insights-body">
                         {activeQuote.drawing_title && (
-                          <div className="wingman-row title-row">
-                            <span className="wingman-label">Drawing Title</span>
-                            <span className="wingman-value" title={activeQuote.drawing_title}>
+                          <div 
+                            className={`insights-row title-row ${activeHighlightField === "drawingTitle" ? "hovered" : ""}`}
+                            onMouseEnter={() => setActiveHighlightField("drawingTitle")}
+                            onMouseLeave={() => setActiveHighlightField(null)}
+                          >
+                            <span className="insights-label">Drawing Title</span>
+                            <span className="insights-value" title={activeQuote.drawing_title}>
                               {activeQuote.drawing_title}
                             </span>
                           </div>
                         )}
                         
                         {/* Material row */}
-                        <div className="wingman-row">
-                          <div className="wingman-row-left">
-                            <span className="wingman-label">Material</span>
-                            <span className="wingman-value">{activeQuote.raw_extracted_data.material || "Not detected"}</span>
+                        <div 
+                          className={`insights-row ${activeHighlightField === "material" ? "hovered" : ""}`}
+                          onMouseEnter={() => setActiveHighlightField("material")}
+                          onMouseLeave={() => setActiveHighlightField(null)}
+                        >
+                          <div className="insights-row-left">
+                            <span className="insights-label">Material</span>
+                            <span className="insights-value">{activeQuote.raw_extracted_data.material?.value || "Not detected"}</span>
                           </div>
-                          <div className="wingman-row-right">
+                          <div className="insights-row-right">
                             {(() => {
                               const activeMatId = editing ? materialId : activeQuote.material_id;
                               const currentMat = materials.find(m => m.id === activeMatId);
-                              const extMat = activeQuote.raw_extracted_data.material;
+                              const extMat = activeQuote.raw_extracted_data.material?.value;
                               const isMatch = currentMat && extMat &&
                                 (currentMat.name.toLowerCase().includes(extMat.toLowerCase()) ||
                                  extMat.toLowerCase().includes(currentMat.name.toLowerCase()));
@@ -768,17 +782,21 @@ export function QuoteDetailClient({
                         </div>
 
                         {/* Thickness row */}
-                        <div className="wingman-row">
-                          <div className="wingman-row-left">
-                            <span className="wingman-label">Thickness</span>
-                            <span className="wingman-value">
-                              {activeQuote.raw_extracted_data.thickness != null ? `${activeQuote.raw_extracted_data.thickness} mm` : "Not detected"}
+                        <div 
+                          className={`insights-row ${activeHighlightField === "thickness" ? "hovered" : ""}`}
+                          onMouseEnter={() => setActiveHighlightField("thickness")}
+                          onMouseLeave={() => setActiveHighlightField(null)}
+                        >
+                          <div className="insights-row-left">
+                            <span className="insights-label">Thickness</span>
+                            <span className="insights-value">
+                              {activeQuote.raw_extracted_data.thickness?.value != null ? `${activeQuote.raw_extracted_data.thickness.value} mm` : "Not detected"}
                             </span>
                           </div>
-                          <div className="wingman-row-right">
+                          <div className="insights-row-right">
                             {(() => {
                               const activeThick = editing ? thicknessMm : (activeQuote.thickness_mm || 0);
-                              const extThick = activeQuote.raw_extracted_data.thickness;
+                              const extThick = activeQuote.raw_extracted_data.thickness?.value;
                               if (extThick == null) return <span className="wm-badge unset">? Unset</span>;
                               const isMatch = Math.abs(activeThick - extThick) < 0.05;
                               if (isMatch) return <span className="wm-badge match">✔ Match</span>;
@@ -800,19 +818,23 @@ export function QuoteDetailClient({
                         </div>
 
                         {/* Dimensions row */}
-                        <div className="wingman-row">
-                          <div className="wingman-row-left">
-                            <span className="wingman-label">Dimensions</span>
-                            <span className="wingman-value">
-                              {activeQuote.raw_extracted_data.boundingWidth != null && activeQuote.raw_extracted_data.boundingHeight != null
-                                ? `${activeQuote.raw_extracted_data.boundingWidth} × ${activeQuote.raw_extracted_data.boundingHeight} mm`
+                        <div 
+                          className={`insights-row ${activeHighlightField === "boundingWidth" || activeHighlightField === "boundingHeight" ? "hovered" : ""}`}
+                          onMouseEnter={() => setActiveHighlightField("boundingWidth")}
+                          onMouseLeave={() => setActiveHighlightField(null)}
+                        >
+                          <div className="insights-row-left">
+                            <span className="insights-label">Dimensions</span>
+                            <span className="insights-value">
+                              {activeQuote.raw_extracted_data.boundingWidth?.value != null && activeQuote.raw_extracted_data.boundingHeight?.value != null
+                                ? `${activeQuote.raw_extracted_data.boundingWidth.value} × ${activeQuote.raw_extracted_data.boundingHeight.value} mm`
                                 : "Not detected"}
                             </span>
                           </div>
-                          <div className="wingman-row-right">
+                          <div className="insights-row-right">
                             {(() => {
-                              const extW = activeQuote.raw_extracted_data.boundingWidth;
-                              const extH = activeQuote.raw_extracted_data.boundingHeight;
+                              const extW = activeQuote.raw_extracted_data.boundingWidth?.value;
+                              const extH = activeQuote.raw_extracted_data.boundingHeight?.value;
                               if (extW == null || extH == null) return <span className="wm-badge unset">? Unset</span>;
                               const activeW = editing ? boundingWidth : (activeQuote.bounding_width_mm || 0);
                               const activeH = editing ? boundingHeight : (activeQuote.bounding_height_mm || 0);
@@ -841,16 +863,20 @@ export function QuoteDetailClient({
                         </div>
 
                         {/* Bends row */}
-                        <div className="wingman-row">
-                          <div className="wingman-row-left">
-                            <span className="wingman-label">Bends</span>
-                            <span className="wingman-value">
-                              {activeQuote.raw_extracted_data.bendCount != null ? activeQuote.raw_extracted_data.bendCount : "Not detected"}
+                        <div 
+                          className={`insights-row ${activeHighlightField === "bendCount" ? "hovered" : ""}`}
+                          onMouseEnter={() => setActiveHighlightField("bendCount")}
+                          onMouseLeave={() => setActiveHighlightField(null)}
+                        >
+                          <div className="insights-row-left">
+                            <span className="insights-label">Bends</span>
+                            <span className="insights-value">
+                              {activeQuote.raw_extracted_data.bendCount?.value != null ? activeQuote.raw_extracted_data.bendCount.value : "Not detected"}
                             </span>
                           </div>
-                          <div className="wingman-row-right">
+                          <div className="insights-row-right">
                             {(() => {
-                              const extBends = activeQuote.raw_extracted_data.bendCount;
+                              const extBends = activeQuote.raw_extracted_data.bendCount?.value;
                               if (extBends == null) return <span className="wm-badge unset">? Unset</span>;
                               const activeBends = editing ? bendCount : (activeQuote.bend_count || 0);
                               const isMatch = activeBends === extBends;
@@ -873,16 +899,20 @@ export function QuoteDetailClient({
                         </div>
 
                         {/* Quantity row */}
-                        <div className="wingman-row">
-                          <div className="wingman-row-left">
-                            <span className="wingman-label">Quantity</span>
-                            <span className="wingman-value">
-                              {activeQuote.raw_extracted_data.quantity != null ? activeQuote.raw_extracted_data.quantity : "Not detected"}
+                        <div 
+                          className={`insights-row ${activeHighlightField === "quantity" ? "hovered" : ""}`}
+                          onMouseEnter={() => setActiveHighlightField("quantity")}
+                          onMouseLeave={() => setActiveHighlightField(null)}
+                        >
+                          <div className="insights-row-left">
+                            <span className="insights-label">Quantity</span>
+                            <span className="insights-value">
+                              {activeQuote.raw_extracted_data.quantity?.value != null ? activeQuote.raw_extracted_data.quantity.value : "Not detected"}
                             </span>
                           </div>
-                          <div className="wingman-row-right">
+                          <div className="insights-row-right">
                             {(() => {
-                              const extQty = activeQuote.raw_extracted_data.quantity;
+                              const extQty = activeQuote.raw_extracted_data.quantity?.value;
                               if (extQty == null) return <span className="wm-badge unset">? Unset</span>;
                               const activeQty = editing ? quantity : (activeQuote.quantity ?? 1);
                               const isMatch = activeQty === extQty;
@@ -903,6 +933,34 @@ export function QuoteDetailClient({
                             })()}
                           </div>
                         </div>
+
+                        {/* Tolerances list */}
+                        {activeQuote.raw_extracted_data.tolerances && activeQuote.raw_extracted_data.tolerances.length > 0 && (
+                          <>
+                            <hr className="insights-section-divider" />
+                            <div className="insights-subtitle">Detected Tolerances</div>
+                            <div className="insights-tolerances-list">
+                              {activeQuote.raw_extracted_data.tolerances.map((tol: any, idx: number) => {
+                                const tolId = `tolerance-${idx}`;
+                                const isHovered = activeHighlightField === tolId;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`insights-tolerance-row ${isHovered ? "hovered" : ""}`}
+                                    onMouseEnter={() => setActiveHighlightField(tolId)}
+                                    onMouseLeave={() => setActiveHighlightField(null)}
+                                  >
+                                    <div className="insights-tolerance-left">
+                                      <span className="insights-tolerance-value">{tol.value}</span>
+                                      <span className="insights-tolerance-type">{tol.type}</span>
+                                    </div>
+                                    <span className="insights-tolerance-badge">drawing</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
 
                       </div>
                     </div>

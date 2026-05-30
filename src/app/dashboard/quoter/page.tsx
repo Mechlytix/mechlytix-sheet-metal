@@ -13,6 +13,7 @@ import { formatCurrency, formatLength } from "@/lib/units";
 import type { PricingGeometry, PricingResult, DXFIntent, PriceBreak, TierNestingResult, NestingMode, NestingAlgorithm, NestingSortOrder, FileNestingResult } from "@/lib/pricing/types";
 import type { Material, MachineProfile, SheetSize } from "@/lib/types/database";
 import { DxfViewer } from "@/components/DxfViewer";
+import { PdfDrawingViewer } from "@/components/PdfDrawingViewer";
 import { NestingPreview } from "@/components/NestingPreview";
 import { CustomerSelector } from "@/components/CustomerSelector";
 import type { CustomerSelection } from "@/components/CustomerSelector";
@@ -55,13 +56,14 @@ interface QuoteItem {
   leadTime: string;
   priceBreaks: PriceBreak[];
   rawExtractedData?: {
-    material?: string | null;
-    thickness?: number | null;
-    boundingWidth?: number | null;
-    boundingHeight?: number | null;
-    bendCount?: number | null;
-    drawingTitle?: string | null;
-    quantity?: number | null;
+    material?: { value: string | null; box: number[] | null } | null;
+    thickness?: { value: number | null; box: number[] | null } | null;
+    boundingWidth?: { value: number | null; box: number[] | null } | null;
+    boundingHeight?: { value: number | null; box: number[] | null } | null;
+    bendCount?: { value: number | null; box: number[] | null } | null;
+    drawingTitle?: { value: string | null; box: number[] | null } | null;
+    quantity?: { value: number | null; box: number[] | null } | null;
+    tolerances?: Array<{ value: string; type: string; box: number[] }> | null;
   };
 }
 
@@ -286,6 +288,7 @@ function QuoterPageContent() {
 
   const [result, setResult] = useState<PricingResult | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [activeHighlightField, setActiveHighlightField] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeItem?.sourceFile && activeItem.geometry.inputType === "pdf") {
@@ -716,38 +719,46 @@ function QuoterPageContent() {
 
           rawExtData = {
             material: data.material || null,
-            thickness: data.thickness != null ? parseFloat(data.thickness) : null,
-            boundingWidth: data.boundingWidth != null ? parseFloat(data.boundingWidth) : null,
-            boundingHeight: data.boundingHeight != null ? parseFloat(data.boundingHeight) : null,
-            bendCount: data.bendCount != null ? parseInt(data.bendCount) : null,
+            thickness: data.thickness || null,
+            boundingWidth: data.boundingWidth || null,
+            boundingHeight: data.boundingHeight || null,
+            bendCount: data.bendCount || null,
             drawingTitle: data.drawingTitle || null,
-            quantity: data.quantity != null ? parseInt(data.quantity) : null,
+            quantity: data.quantity || null,
+            tolerances: data.tolerances || null,
           };
 
           // Try to match material from materials list
-          if (data.material) {
+          const extMatValue = data.material?.value;
+          if (extMatValue) {
             const matched = materials.find(m => 
-              m.name.toLowerCase().includes(data.material.toLowerCase()) ||
-              data.material.toLowerCase().includes(m.name.toLowerCase())
+              m.name.toLowerCase().includes(extMatValue.toLowerCase()) ||
+              extMatValue.toLowerCase().includes(m.name.toLowerCase())
             );
             if (matched) materialIdOverride = matched.id;
           }
           
-          if (data.quantity && data.quantity > 0) {
-            quantityOverride = data.quantity;
+          const extQtyValue = data.quantity?.value;
+          if (extQtyValue && extQtyValue > 0) {
+            quantityOverride = extQtyValue;
           }
+
+          const thicknessVal = data.thickness?.value || 0;
+          const widthVal = data.boundingWidth?.value || 0;
+          const heightVal = data.boundingHeight?.value || 0;
+          const bendVal = data.bendCount?.value || 0;
 
           geo = {
             inputType: "pdf",
-            boundingWidth: data.boundingWidth || 0,
-            boundingHeight: data.boundingHeight || 0,
-            partArea: (data.boundingWidth || 0) * (data.boundingHeight || 0),
-            perimeter: 2 * ((data.boundingWidth || 0) + (data.boundingHeight || 0)),
+            boundingWidth: widthVal,
+            boundingHeight: heightVal,
+            partArea: widthVal * heightVal,
+            perimeter: 2 * (widthVal + heightVal),
             pierceCount: 0,
-            bendCount: data.bendCount || 0,
+            bendCount: bendVal,
             bendAngles: [],
-            thickness: data.thickness || 0,
-            thicknessConfidence: data.thickness ? "detected" : "required",
+            thickness: thicknessVal,
+            thicknessConfidence: thicknessVal ? "detected" : "required",
           };
         } else if (ext === "dxf") {
           const text = await file.text();
@@ -993,16 +1004,20 @@ function QuoterPageContent() {
               <div className="quoter-tab-body">
                 <div className="quoter-centre">
                   {activeItem.geometry.inputType === "pdf" && pdfUrl ? (
-                    <iframe
-                      src={pdfUrl}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        border: "none",
-                        background: "var(--bg-secondary)",
-                        borderRadius: "8px",
+                    <PdfDrawingViewer
+                      pdfUrl={pdfUrl}
+                      highlights={{
+                        material: activeItem.rawExtractedData?.material,
+                        thickness: activeItem.rawExtractedData?.thickness,
+                        boundingWidth: activeItem.rawExtractedData?.boundingWidth,
+                        boundingHeight: activeItem.rawExtractedData?.boundingHeight,
+                        bendCount: activeItem.rawExtractedData?.bendCount,
+                        drawingTitle: activeItem.rawExtractedData?.drawingTitle,
+                        quantity: activeItem.rawExtractedData?.quantity,
                       }}
-                      title="PDF Drawing Preview"
+                      tolerances={activeItem.rawExtractedData?.tolerances}
+                      activeField={activeHighlightField}
+                      onHoverField={setActiveHighlightField}
                     />
                   ) : (
                     <DxfViewer
@@ -1018,30 +1033,38 @@ function QuoterPageContent() {
                 <div className="quoter-panel">
                   <div className="qrd-content">
                     {activeItem.rawExtractedData && (
-                      <div className="wingman-panel">
-                        <div className="wingman-header">
-                          <span className="wingman-icon">⚡</span>
-                          <span className="wingman-title">Wingman AI Findings</span>
+                      <div className="insights-panel">
+                        <div className="insights-header">
+                          <span className="insights-icon">⚡</span>
+                          <span className="insights-title">Blueprint Insights</span>
                         </div>
-                        <div className="wingman-body">
-                          {activeItem.rawExtractedData.drawingTitle && (
-                            <div className="wingman-row title-row">
-                              <span className="wingman-label">Drawing Title</span>
-                              <span className="wingman-value" title={activeItem.rawExtractedData.drawingTitle}>
-                                {activeItem.rawExtractedData.drawingTitle}
+                        <div className="insights-body">
+                          {activeItem.rawExtractedData.drawingTitle?.value && (
+                            <div 
+                              className={`insights-row title-row ${activeHighlightField === "drawingTitle" ? "hovered" : ""}`}
+                              onMouseEnter={() => setActiveHighlightField("drawingTitle")}
+                              onMouseLeave={() => setActiveHighlightField(null)}
+                            >
+                              <span className="insights-label">Drawing Title</span>
+                              <span className="insights-value" title={activeItem.rawExtractedData.drawingTitle.value}>
+                                {activeItem.rawExtractedData.drawingTitle.value}
                               </span>
                             </div>
                           )}
                           
                           {/* Material row */}
-                          <div className="wingman-row">
-                            <div className="wingman-row-left">
-                              <span className="wingman-label">Material</span>
-                              <span className="wingman-value">{activeItem.rawExtractedData.material || "Not detected"}</span>
+                          <div 
+                            className={`insights-row ${activeHighlightField === "material" ? "hovered" : ""}`}
+                            onMouseEnter={() => setActiveHighlightField("material")}
+                            onMouseLeave={() => setActiveHighlightField(null)}
+                          >
+                            <div className="insights-row-left">
+                              <span className="insights-label">Material</span>
+                              <span className="insights-value">{activeItem.rawExtractedData.material?.value || "Not detected"}</span>
                             </div>
-                            <div className="wingman-row-right">
+                            <div className="insights-row-right">
                               {(() => {
-                                const extMat = activeItem.rawExtractedData?.material;
+                                const extMat = activeItem.rawExtractedData.material?.value;
                                 if (!extMat) return <span className="wm-badge unset">? Unset</span>;
                                 const currentMat = materials.find(m => m.id === activeItem.materialId);
                                 const isMatch = currentMat && 
@@ -1072,17 +1095,21 @@ function QuoterPageContent() {
                           </div>
 
                           {/* Thickness row */}
-                          <div className="wingman-row">
-                            <div className="wingman-row-left">
-                              <span className="wingman-label">Thickness</span>
-                              <span className="wingman-value">
-                                {activeItem.rawExtractedData.thickness != null ? `${activeItem.rawExtractedData.thickness} mm` : "Not detected"}
+                          <div 
+                            className={`insights-row ${activeHighlightField === "thickness" ? "hovered" : ""}`}
+                            onMouseEnter={() => setActiveHighlightField("thickness")}
+                            onMouseLeave={() => setActiveHighlightField(null)}
+                          >
+                            <div className="insights-row-left">
+                              <span className="insights-label">Thickness</span>
+                              <span className="insights-value">
+                                {activeItem.rawExtractedData.thickness?.value != null ? `${activeItem.rawExtractedData.thickness.value} mm` : "Not detected"}
                               </span>
                             </div>
-                            <div className="wingman-row-right">
+                            <div className="insights-row-right">
                               {(() => {
                                 const currentThick = activeItem.thickness || activeItem.geometry.thickness || 0;
-                                const extThick = activeItem.rawExtractedData.thickness;
+                                const extThick = activeItem.rawExtractedData.thickness?.value;
                                 if (extThick == null) return <span className="wm-badge unset">? Unset</span>;
                                 const isMatch = Math.abs(currentThick - extThick) < 0.05;
                                 if (isMatch) return <span className="wm-badge match">✔ Match</span>;
@@ -1102,19 +1129,23 @@ function QuoterPageContent() {
                           </div>
 
                           {/* Dimensions row */}
-                          <div className="wingman-row">
-                            <div className="wingman-row-left">
-                              <span className="wingman-label">Dimensions</span>
-                              <span className="wingman-value">
-                                {activeItem.rawExtractedData.boundingWidth != null && activeItem.rawExtractedData.boundingHeight != null
-                                  ? `${activeItem.rawExtractedData.boundingWidth} × ${activeItem.rawExtractedData.boundingHeight} mm`
+                          <div 
+                            className={`insights-row ${activeHighlightField === "boundingWidth" || activeHighlightField === "boundingHeight" ? "hovered" : ""}`}
+                            onMouseEnter={() => setActiveHighlightField("boundingWidth")}
+                            onMouseLeave={() => setActiveHighlightField(null)}
+                          >
+                            <div className="insights-row-left">
+                              <span className="insights-label">Dimensions</span>
+                              <span className="insights-value">
+                                {activeItem.rawExtractedData.boundingWidth?.value != null && activeItem.rawExtractedData.boundingHeight?.value != null
+                                  ? `${activeItem.rawExtractedData.boundingWidth.value} × ${activeItem.rawExtractedData.boundingHeight.value} mm`
                                   : "Not detected"}
                               </span>
                             </div>
-                            <div className="wingman-row-right">
+                            <div className="insights-row-right">
                               {(() => {
-                                const extW = activeItem.rawExtractedData.boundingWidth;
-                                const extH = activeItem.rawExtractedData.boundingHeight;
+                                const extW = activeItem.rawExtractedData.boundingWidth?.value;
+                                const extH = activeItem.rawExtractedData.boundingHeight?.value;
                                 if (extW == null || extH == null) return <span className="wm-badge unset">? Unset</span>;
                                 const curW = activeItem.geometry.boundingWidth;
                                 const curH = activeItem.geometry.boundingHeight;
@@ -1146,16 +1177,20 @@ function QuoterPageContent() {
                           </div>
 
                           {/* Bends row */}
-                          <div className="wingman-row">
-                            <div className="wingman-row-left">
-                              <span className="wingman-label">Bends</span>
-                              <span className="wingman-value">
-                                {activeItem.rawExtractedData.bendCount != null ? activeItem.rawExtractedData.bendCount : "Not detected"}
+                          <div 
+                            className={`insights-row ${activeHighlightField === "bendCount" ? "hovered" : ""}`}
+                            onMouseEnter={() => setActiveHighlightField("bendCount")}
+                            onMouseLeave={() => setActiveHighlightField(null)}
+                          >
+                            <div className="insights-row-left">
+                              <span className="insights-label">Bends</span>
+                              <span className="insights-value">
+                                {activeItem.rawExtractedData.bendCount?.value != null ? activeItem.rawExtractedData.bendCount.value : "Not detected"}
                               </span>
                             </div>
-                            <div className="wingman-row-right">
+                            <div className="insights-row-right">
                               {(() => {
-                                const extBends = activeItem.rawExtractedData.bendCount;
+                                const extBends = activeItem.rawExtractedData.bendCount?.value;
                                 if (extBends == null) return <span className="wm-badge unset">? Unset</span>;
                                 const curBends = activeItem.manualBendCount ?? activeItem.geometry.bendCount ?? 0;
                                 const isMatch = curBends === extBends;
@@ -1176,16 +1211,20 @@ function QuoterPageContent() {
                           </div>
 
                           {/* Quantity row */}
-                          <div className="wingman-row">
-                            <div className="wingman-row-left">
-                              <span className="wingman-label">Quantity</span>
-                              <span className="wingman-value">
-                                {activeItem.rawExtractedData.quantity != null ? activeItem.rawExtractedData.quantity : "Not detected"}
+                          <div 
+                            className={`insights-row ${activeHighlightField === "quantity" ? "hovered" : ""}`}
+                            onMouseEnter={() => setActiveHighlightField("quantity")}
+                            onMouseLeave={() => setActiveHighlightField(null)}
+                          >
+                            <div className="insights-row-left">
+                              <span className="insights-label">Quantity</span>
+                              <span className="insights-value">
+                                {activeItem.rawExtractedData.quantity?.value != null ? activeItem.rawExtractedData.quantity.value : "Not detected"}
                               </span>
                             </div>
-                            <div className="wingman-row-right">
+                            <div className="insights-row-right">
                               {(() => {
-                                const extQty = activeItem.rawExtractedData.quantity;
+                                const extQty = activeItem.rawExtractedData.quantity?.value;
                                 if (extQty == null) return <span className="wm-badge unset">? Unset</span>;
                                 const curQty = activeItem.quantity;
                                 const isMatch = curQty === extQty;
@@ -1205,6 +1244,33 @@ function QuoterPageContent() {
                             </div>
                           </div>
 
+                          {/* Tolerances list */}
+                          {activeItem.rawExtractedData.tolerances && activeItem.rawExtractedData.tolerances.length > 0 && (
+                            <>
+                              <hr className="insights-section-divider" />
+                              <div className="insights-subtitle">Detected Tolerances</div>
+                              <div className="insights-tolerances-list">
+                                {activeItem.rawExtractedData.tolerances.map((tol, idx) => {
+                                  const tolId = `tolerance-${idx}`;
+                                  const isHovered = activeHighlightField === tolId;
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className={`insights-tolerance-row ${isHovered ? "hovered" : ""}`}
+                                      onMouseEnter={() => setActiveHighlightField(tolId)}
+                                      onMouseLeave={() => setActiveHighlightField(null)}
+                                    >
+                                      <div className="insights-tolerance-left">
+                                        <span className="insights-tolerance-value">{tol.value}</span>
+                                        <span className="insights-tolerance-type">{tol.type}</span>
+                                      </div>
+                                      <span className="insights-tolerance-badge">drawing</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     )}
