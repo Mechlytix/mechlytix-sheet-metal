@@ -22,18 +22,20 @@ export async function POST(req: Request) {
     const prompt = `You are an expert sheet metal estimator. Analyze this technical drawing PDF and extract the key parameters needed for automated quoting.
 For each parameter, you must extract:
 1. The exact parameter value.
-2. The normalized bounding box [ymin, xmin, ymax, xmax] coordinates that tightly enclose only the text characters of that value on the drawing sheet. Coordinates must be integers on a 0-1000 scale representing the full page (where 0,0 is the top-left, and 1000,1000 is the bottom-right).
+2. The normalized bounding box [ymin, xmin, ymax, xmax] coordinates. 
+   CRITICAL: The bounding box must tightly enclose ONLY the specific numeric digits and text characters of the value itself (e.g. the text '(5.44)' or '(1.250)'). Do NOT include any dimension lines, arrows, leader lines, extension lines, or adjacent drawing geometry inside the bounding box. The box should fit like a tight text-selection highlight.
+   Coordinates must be integers on a 0-1000 scale representing the full page (where 0,0 is the top-left, and 1000,1000 is the bottom-right).
 
 Parameters to extract:
-1. Material name/grade (e.g. Aluminum 5052, Mild Steel, Stainless 304, etc.)
-2. Sheet thickness in millimeters (convert gauges to mm if necessary, e.g. 14ga mild steel is ~1.9mm, 11ga is ~3.0mm, 10ga is ~3.4mm, 16ga is ~1.5mm, etc.).
-3. Bounding width in millimeters (the largest flat pattern or part width dimension of the unfolded part or overall part bounding box).
-4. Bounding height in millimeters (the largest flat vertical dimension of the unfolded part or overall part bounding box).
-5. Bend count (total number of bends/folds).
-6. Drawing title/number from the title block.
-7. Quantity requested if specified.
+1. Material text label: The specific text block specifying the material name/grade (e.g. Aluminum 5052, Mild Steel, Stainless 304, etc.).
+2. Sheet thickness text label: The numeric text block specifying the thickness in millimeters or gauge (e.g. '1.9mm', '3.0mm', '10ga', etc.).
+3. Bounding width text label: The numeric text block specifying the bounding width of the part or flat pattern (e.g. '5.44' or '120mm').
+4. Bounding height text label: The numeric text block specifying the bounding height of the part or flat pattern (e.g. '1.250' or '85mm').
+5. Bend count text label: The text block, note, or table cell indicating the number of bends/folds.
+6. Drawing title/number text label: The text block containing the drawing title or number inside the title block.
+7. Quantity text label: The numeric text block specifying the requested quantity.
 
-Also, search the entire drawing (notes, title block, and dimension labels) for any tolerance specifications (e.g. general linear tolerances like 'LINEAR ±0.1mm' or 'TOLERANCES ±0.5', angular tolerances, or tolerances shown inline on specific dimensions like '45.0 ± 0.05'). Return a list of all detected tolerances including their text value, type (linear, angular, geometric, or general), and coordinates box [ymin, xmin, ymax, xmax] that tightly enclose the tolerance callout.
+Also, search the entire drawing (notes, title block, and dimension labels) for any tolerance specifications (e.g. general linear tolerances like 'LINEAR ±0.1mm' or 'TOLERANCES ±0.5', angular tolerances, or tolerances shown inline on specific dimensions like '45.0 ± 0.05'). Return a list of all detected tolerances including their text value, type (linear, angular, geometric, or general), and coordinates box [ymin, xmin, ymax, xmax] that tightly enclose ONLY the tolerance text characters (excluding leader lines, pointers, or dimension lines).
 
 Be extremely precise. If a parameter or value is not explicitly present or cannot be determined with high confidence, set the value to null and box to null.`;
 
