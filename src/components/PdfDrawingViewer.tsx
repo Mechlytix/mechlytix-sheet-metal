@@ -276,10 +276,18 @@ export function PdfDrawingViewer({
           >
             {highlightList.map((hl) => {
               const [ymin, xmin, ymax, xmax] = hl.box;
-              const top = ymin / 10;
-              const left = xmin / 10;
-              const width = (xmax - xmin) / 10;
-              const height = (ymax - ymin) / 10;
+              
+              // Normalize coordinate ranges in case they are inverted by the model
+              const yminCorrected = Math.min(ymin, ymax);
+              const ymaxCorrected = Math.max(ymin, ymax);
+              const xminCorrected = Math.min(xmin, xmax);
+              const xmaxCorrected = Math.max(xmin, xmax);
+
+              // Clamp values to the 0-1000 range (translates to 0%-100% overlay bounds)
+              const top = Math.max(0, Math.min(100, yminCorrected / 10));
+              const left = Math.max(0, Math.min(100, xminCorrected / 10));
+              const width = Math.max(0, Math.min(100 - left, (xmaxCorrected - xminCorrected) / 10));
+              const height = Math.max(0, Math.min(100 - top, (ymaxCorrected - yminCorrected) / 10));
 
               const isHovered = activeField === hl.id;
 
